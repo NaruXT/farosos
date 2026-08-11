@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Farosos" parent="android:Theme.DeviceDefault.NoActionBar" />
+</resources>
