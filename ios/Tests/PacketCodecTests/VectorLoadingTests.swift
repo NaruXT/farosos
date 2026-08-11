@@ -8,11 +8,12 @@ import XCTest
 /// el contrato de bytes exacto que Swift y Kotlin deben compartir.
 final class VectorLoadingTests: XCTestCase {
     private func repoRootURL() -> URL {
-        // ios/Tests/PacketCodecTests/VectorLoadingTests.swift -> raíz del repo
+        // #filePath = .../ios/Tests/PacketCodecTests/VectorLoadingTests.swift
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // PacketCodecTests/
-            .deletingLastPathComponent() // Tests/
-            .deletingLastPathComponent() // ios/
+            .deletingLastPathComponent() // quita VectorLoadingTests.swift -> PacketCodecTests/
+            .deletingLastPathComponent() // quita PacketCodecTests/ -> Tests/
+            .deletingLastPathComponent() // quita Tests/ -> ios/
+            .deletingLastPathComponent() // quita ios/ -> raíz del repo
     }
 
     private func loadVectorsJSON() throws -> [String: Any] {
