@@ -19,15 +19,20 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * Permisos runtime necesarios para advertising/scanning BLE. Android 12+
- * (API 31+) usa los permisos dedicados de "nearby devices"; antes de eso,
- * el sistema exige ubicación para poder escanear (aunque no la usemos —
- * la latitud/longitud del beacon viaja en el payload, no se deriva del
- * scan).
+ * Permisos runtime necesarios para advertising/scanning/GATT BLE. Android
+ * 12+ (API 31+) usa los permisos dedicados de "nearby devices" — incluye
+ * `BLUETOOTH_CONNECT`, necesario para conectarse por GATT a peers iOS
+ * (ticket #11), no solo para escanear/anunciar; antes de eso, el sistema
+ * exige ubicación para poder escanear (aunque no la usemos — la
+ * latitud/longitud del beacon viaja en el payload, no se deriva del scan).
  */
 private val bluetoothPermissions: Array<String> =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_ADVERTISE)
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
     } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }

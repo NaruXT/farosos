@@ -131,7 +131,13 @@ class EmergencyViewModel @JvmOverloads constructor(
     private fun wireRadio() {
         advertiser.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
         scanner.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
-        scanner.onManufacturerData = onMain { data -> handleReceivedManufacturerData(data) }
+        // Manufacturer Data directa (p. ej. peers Android, que sí pueden
+        // anunciarla) y GATT (peers iOS, ticket #11 — ver `BleScanner`)
+        // traen los mismos 26 bytes sin envoltorio adicional en ambos
+        // casos, así que ambas rutas convergen en el mismo pipeline de
+        // dedup + log + relay.
+        scanner.onManufacturerData = onMain { data -> handleReceivedPacketData(data) }
+        scanner.onGattPacketData = onMain { data -> handleReceivedPacketData(data) }
         // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
         // looper) que la Máquina A, así que este callback ya llega en el
         // hilo principal — no hace falta pasar por `onMain`.
@@ -168,11 +174,12 @@ class EmergencyViewModel @JvmOverloads constructor(
     }
 
     /**
-     * `BeaconPacketCodec.decode` ya filtra por Magic/Versión — lo que no
-     * coincide simplemente no decodifica y se ignora aquí, sin entrada de
-     * log.
+     * Punto de entrada compartido por ambas rutas de recepción (Manufacturer
+     * Data directa y GATT) — `BeaconPacketCodec.decode` ya filtra por
+     * Magic/Versión — lo que no coincide simplemente no decodifica y se
+     * ignora aquí, sin entrada de log.
      */
-    private fun handleReceivedManufacturerData(data: ByteArray) {
+    private fun handleReceivedPacketData(data: ByteArray) {
         val packet = BeaconPacketCodec.decode(data) ?: return
         val key = DedupCache.Key(packet.deviceIdHash, packet.nonce)
         if (!dedupCache.insertIfAbsent(key)) {
