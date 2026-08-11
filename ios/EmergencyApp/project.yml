@@ -1,0 +1,30 @@
+name: Farosos
+options:
+  bundleIdPrefix: com.farosos
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  Farosos:
+    path: ..
+targets:
+  EmergencyApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: Farosos
+        product: PersonStateMachine
+      - package: Farosos
+        product: PacketCodec
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.farosos.EmergencyApp
+        PRODUCT_NAME: Farosos
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
