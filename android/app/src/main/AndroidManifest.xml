@@ -1,5 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Pre-Android 12 (API < 31): BLUETOOTH/BLUETOOTH_ADMIN + ubicación son
+         los permisos que el sistema exige para advertising/scanning BLE. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Android 12+ (API 31+): permisos runtime dedicados. `neverForLocation`
+         evita tener que pedir también ubicación — no derivamos posición de
+         los resultados del scan, la latitud/longitud viaja en el payload. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"

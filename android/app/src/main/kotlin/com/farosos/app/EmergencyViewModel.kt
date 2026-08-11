@@ -1,16 +1,19 @@
 package com.farosos.app
 
+import android.app.Application
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import com.farosos.beaconradio.DedupCache
+import com.farosos.beaconradio.LocalBeaconFactory
+import com.farosos.beaconradio.RandomNonceGenerator
+import com.farosos.codec.BeaconPacketCodec
 import com.farosos.personstate.PersonState
 import com.farosos.personstate.PersonStateMachine
-
-data class LogEntry(val timestampMillis: Long, val state: PersonState, val sequence: Int)
 
 /**
  * Limitación conocida: el estado vive solo en memoria dentro de esta
@@ -19,11 +22,25 @@ data class LogEntry(val timestampMillis: Long, val state: PersonState, val seque
  * a que el sistema mate el proceso — persistir el estado entre lanzamientos
  * queda fuera de esta ticket; es una decisión de diseño propia (dónde
  * guardarlo, cómo re-armar los timers en curso) que merece su propio issue.
+ *
+ * Limitación conocida (#7): la interoperabilidad real de las dos radios BLE
+ * (advertising + scanning entre dos teléfonos distintos) no se verificó en
+ * esta sesión por falta de un segundo dispositivo físico — eso es
+ * exactamente lo que cubre la ticket #10 (verificación de campo A→B→C).
+ * El radio arranca recién cuando `startRadioIfNotStarted()` confirma que
+ * los permisos de Bluetooth ya fueron concedidos (ver `MainActivity`).
+ *
+ * A diferencia de iOS (donde el propio sistema strippea Manufacturer Data
+ * en background, dejando "foreground-only" gratis), Android no detiene
+ * advertising/scanning por su cuenta — `MainActivity` reenvía los eventos
+ * de ciclo de vida `ON_START`/`ON_STOP` a `onAppForegrounded`/
+ * `onAppBackgrounded` para cumplir ese requisito explícitamente.
  */
-class EmergencyViewModel(
+class EmergencyViewModel @JvmOverloads constructor(
+    application: Application,
     private val shakeDuration: Double = 3.0,
     private val confirmationWindow: Double = 20.0
-) : ViewModel() {
+) : AndroidViewModel(application) {
     var state by mutableStateOf(PersonState.DORMIDO)
         private set
     val logEntries = mutableStateListOf<LogEntry>()
@@ -35,8 +52,16 @@ class EmergencyViewModel(
     private var countdownDeadlineMillis: Long? = null
     private var countdownRunnable: Runnable? = null
 
+    private val deviceIdHash: ByteArray = DeviceIdentity.deviceIdHash(application)
+    private val dedupCache = DedupCache()
+    private val nonceGenerator = RandomNonceGenerator()
+    private val advertiser = BleAdvertiser(application)
+    private val scanner = BleScanner(application)
+    private var radioStarted = false
+    private var isForeground = false
+
     init {
-        appendLogEntry()
+        appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
     }
 
@@ -44,9 +69,42 @@ class EmergencyViewModel(
     fun confirmOk() = machine.confirmOk()
     fun requestHelp() = machine.requestHelp()
 
+    /**
+     * Arranca advertising + scanning por primera vez. Se llama desde
+     * `MainActivity` recién cuando el usuario ya concedió los permisos de
+     * Bluetooth requeridos — llamarlo antes lanzaría `SecurityException`
+     * en Android 12+.
+     */
+    fun startRadioIfNotStarted() {
+        if (radioStarted) return
+        radioStarted = true
+        wireRadio()
+        onAppForegrounded()
+    }
+
+    /** Reanuda advertising + scanning — `MainActivity` lo llama en `ON_START`. */
+    fun onAppForegrounded() {
+        if (!radioStarted || isForeground) return
+        isForeground = true
+        scanner.start()
+        refreshAdvertisedBeacon()
+    }
+
+    /**
+     * Detiene advertising + scanning — `MainActivity` lo llama en `ON_STOP`
+     * para cumplir el requisito de operación foreground-only.
+     */
+    fun onAppBackgrounded() {
+        if (!isForeground) return
+        isForeground = false
+        scanner.stop()
+        advertiser.stop()
+    }
+
     private fun handleTransition(newState: PersonState) {
         state = newState
-        appendLogEntry()
+        appendLogEntry(LogEntry.Kind.Transition(newState, machine.sequence))
+        if (isForeground) refreshAdvertisedBeacon()
 
         when (newState) {
             PersonState.ACTIVO_SIN_CONFIRMAR -> startCountdown(shakeDuration)
@@ -55,8 +113,58 @@ class EmergencyViewModel(
         }
     }
 
-    private fun appendLogEntry() {
-        logEntries.add(LogEntry(System.currentTimeMillis(), machine.state, machine.sequence))
+    private fun appendLogEntry(kind: LogEntry.Kind) {
+        logEntries.add(LogEntry(System.currentTimeMillis(), kind))
+    }
+
+    // --- BLE (advertising + scanning + dedup, ticket #7) ---
+
+    private fun wireRadio() {
+        advertiser.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
+        scanner.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
+        scanner.onManufacturerData = onMain { data -> handleReceivedManufacturerData(data) }
+    }
+
+    /**
+     * Reenvía un callback de `BleAdvertiser`/`BleScanner` (que llega en un
+     * hilo de Binder, no necesariamente el principal) de vuelta al hilo
+     * principal — Compose solo debe mutar estado ahí.
+     */
+    private fun <Value> onMain(work: (Value) -> Unit): (Value) -> Unit =
+        { value -> handler.post { work(value) } }
+
+    /**
+     * Reconstruye el `BeaconPacket` local a partir del estado actual de la
+     * Máquina A y lo pone a difundir. Se auto-registra en la propia caché
+     * de dedup al emitir (decisión 12): si este mismo beacon rebota de un
+     * vecino, se descarta como duplicado por el mismo camino que cualquier
+     * otro, sin una ruta de código especial para "es mío".
+     */
+    private fun refreshAdvertisedBeacon() {
+        val packet = LocalBeaconFactory.makeBeacon(
+            deviceIdHash = deviceIdHash,
+            status = machine.status,
+            sequence = machine.sequence,
+            nowEpochSeconds = System.currentTimeMillis() / 1000,
+            nonceGenerator = nonceGenerator
+        )
+        dedupCache.insertIfAbsent(DedupCache.Key(packet.deviceIdHash, packet.nonce))
+        advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet))
+    }
+
+    /**
+     * `BeaconPacketCodec.decode` ya filtra por Magic/Versión — lo que no
+     * coincide simplemente no decodifica y se ignora aquí, sin entrada de
+     * log.
+     */
+    private fun handleReceivedManufacturerData(data: ByteArray) {
+        val packet = BeaconPacketCodec.decode(data) ?: return
+        val key = DedupCache.Key(packet.deviceIdHash, packet.nonce)
+        if (dedupCache.insertIfAbsent(key)) {
+            appendLogEntry(LogEntry.Kind.BeaconReceived(packet.deviceIdHash, packet.ttl, packet.sequence))
+        } else {
+            appendLogEntry(LogEntry.Kind.DuplicateDiscarded(packet.deviceIdHash, packet.nonce))
+        }
     }
 
     private fun startCountdown(durationSeconds: Double) {
@@ -93,6 +201,7 @@ class EmergencyViewModel(
 
     override fun onCleared() {
         stopCountdown()
+        onAppBackgrounded()
         super.onCleared()
     }
 }

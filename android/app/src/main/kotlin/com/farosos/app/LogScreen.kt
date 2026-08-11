@@ -19,9 +19,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Log en pantalla de las transiciones de la Máquina de estados A. Este
- * ticket no tiene BLE todavía — cuando llegue (#6/#7), los eventos de red
- * (emitido/recibido/descartado) se agregan a esta misma lista.
+ * Log en pantalla de las transiciones de la Máquina de estados A y de los
+ * eventos de red BLE (emitido/recibido/descartado por duplicado, ticket
+ * #7) — mecanismo principal de verificación en campo.
  */
 @Composable
 fun LogScreen(entries: List<LogEntry>, modifier: Modifier = Modifier) {
@@ -33,8 +33,8 @@ fun LogScreen(entries: List<LogEntry>, modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = entry.state.name, fontWeight = FontWeight.Bold)
-                    Text(text = "Secuencia ${entry.sequence}", style = MaterialTheme.typography.bodySmall)
+                    Text(text = title(entry.kind), fontWeight = FontWeight.Bold)
+                    Text(text = detail(entry.kind), style = MaterialTheme.typography.bodySmall)
                 }
                 Text(
                     text = timeFormatter.format(Date(entry.timestampMillis)),
@@ -45,3 +45,19 @@ fun LogScreen(entries: List<LogEntry>, modifier: Modifier = Modifier) {
         }
     }
 }
+
+private fun title(kind: LogEntry.Kind): String = when (kind) {
+    is LogEntry.Kind.Transition -> kind.state.name
+    is LogEntry.Kind.BeaconReceived -> "RECIBIDO"
+    is LogEntry.Kind.DuplicateDiscarded -> "DESCARTADO POR DUPLICADO"
+    is LogEntry.Kind.Info -> "INFO"
+}
+
+private fun detail(kind: LogEntry.Kind): String = when (kind) {
+    is LogEntry.Kind.Transition -> "Secuencia ${kind.sequence}"
+    is LogEntry.Kind.BeaconReceived -> "De ${shortHex(kind.deviceIdHash)} · TTL ${kind.ttl} · Secuencia ${kind.sequence}"
+    is LogEntry.Kind.DuplicateDiscarded -> "De ${shortHex(kind.deviceIdHash)} · Nonce ${kind.nonce}"
+    is LogEntry.Kind.Info -> kind.message
+}
+
+private fun shortHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }

@@ -17,4 +17,5 @@ rootProject.name = "farosos-android"
 
 include(":codec")
 include(":personstate")
+include(":beaconradio")
 include(":app")
