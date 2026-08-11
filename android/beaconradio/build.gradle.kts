@@ -8,6 +8,7 @@ repositories {
 
 dependencies {
     implementation(project(":codec"))
+    implementation(project(":personstate"))
     testImplementation(kotlin("test"))
 }
 

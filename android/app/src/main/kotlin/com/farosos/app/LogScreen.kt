@@ -50,6 +50,7 @@ private fun title(kind: LogEntry.Kind): String = when (kind) {
     is LogEntry.Kind.Transition -> kind.state.name
     is LogEntry.Kind.BeaconReceived -> "RECIBIDO"
     is LogEntry.Kind.DuplicateDiscarded -> "DESCARTADO POR DUPLICADO"
+    is LogEntry.Kind.TtlExhausted -> "DESCARTADO POR TTL AGOTADO"
     is LogEntry.Kind.Info -> "INFO"
 }
 
@@ -57,6 +58,7 @@ private fun detail(kind: LogEntry.Kind): String = when (kind) {
     is LogEntry.Kind.Transition -> "Secuencia ${kind.sequence}"
     is LogEntry.Kind.BeaconReceived -> "De ${shortHex(kind.deviceIdHash)} · TTL ${kind.ttl} · Secuencia ${kind.sequence}"
     is LogEntry.Kind.DuplicateDiscarded -> "De ${shortHex(kind.deviceIdHash)} · Nonce ${kind.nonce}"
+    is LogEntry.Kind.TtlExhausted -> "De ${shortHex(kind.deviceIdHash)} · Secuencia ${kind.sequence}"
     is LogEntry.Kind.Info -> kind.message
 }
 

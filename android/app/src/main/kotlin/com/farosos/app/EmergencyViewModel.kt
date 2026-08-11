@@ -11,6 +11,8 @@ import androidx.lifecycle.AndroidViewModel
 import com.farosos.beaconradio.DedupCache
 import com.farosos.beaconradio.LocalBeaconFactory
 import com.farosos.beaconradio.RandomNonceGenerator
+import com.farosos.beaconradio.RelayPolicy
+import com.farosos.beaconradio.RelayQueue
 import com.farosos.codec.BeaconPacketCodec
 import com.farosos.personstate.PersonState
 import com.farosos.personstate.PersonStateMachine
@@ -48,7 +50,8 @@ class EmergencyViewModel @JvmOverloads constructor(
         private set
 
     private val handler = Handler(Looper.getMainLooper())
-    private val machine = PersonStateMachine(RealScheduler(), shakeDuration, confirmationWindow)
+    private val scheduler = RealScheduler()
+    private val machine = PersonStateMachine(scheduler, shakeDuration, confirmationWindow)
     private var countdownDeadlineMillis: Long? = null
     private var countdownRunnable: Runnable? = null
 
@@ -57,6 +60,7 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val nonceGenerator = RandomNonceGenerator()
     private val advertiser = BleAdvertiser(application)
     private val scanner = BleScanner(application)
+    private val relayQueue = RelayQueue(scheduler)
     private var radioStarted = false
     private var isForeground = false
 
@@ -88,15 +92,20 @@ class EmergencyViewModel @JvmOverloads constructor(
         isForeground = true
         scanner.start()
         refreshAdvertisedBeacon()
+        relayQueue.start()
     }
 
     /**
      * Detiene advertising + scanning — `MainActivity` lo llama en `ON_STOP`
-     * para cumplir el requisito de operación foreground-only.
+     * para cumplir el requisito de operación foreground-only. `relayQueue`
+     * también se detiene aquí: si siguiera rotando en background, su
+     * callback volvería a llamar `advertiser.updateAdvertisedData` y
+     * reanudaría el advertising que este método acaba de apagar.
      */
     fun onAppBackgrounded() {
         if (!isForeground) return
         isForeground = false
+        relayQueue.stop()
         scanner.stop()
         advertiser.stop()
     }
@@ -123,6 +132,10 @@ class EmergencyViewModel @JvmOverloads constructor(
         advertiser.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
         scanner.onError = onMain { message -> appendLogEntry(LogEntry.Kind.Info(message)) }
         scanner.onManufacturerData = onMain { data -> handleReceivedManufacturerData(data) }
+        // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
+        // looper) que la Máquina A, así que este callback ya llega en el
+        // hilo principal — no hace falta pasar por `onMain`.
+        relayQueue.onCurrentPacketChanged = { packet -> advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet)) }
     }
 
     /**
@@ -135,10 +148,12 @@ class EmergencyViewModel @JvmOverloads constructor(
 
     /**
      * Reconstruye el `BeaconPacket` local a partir del estado actual de la
-     * Máquina A y lo pone a difundir. Se auto-registra en la propia caché
-     * de dedup al emitir (decisión 12): si este mismo beacon rebota de un
-     * vecino, se descarta como duplicado por el mismo camino que cualquier
-     * otro, sin una ruta de código especial para "es mío".
+     * Máquina A y lo pone en la cola de relay (ticket #9): el propio beacon
+     * siempre está presente ahí, junto a los beacons ajenos pendientes de
+     * retransmitir, rotando en round-robin. Se auto-registra en la propia
+     * caché de dedup al emitir (decisión 12): si este mismo beacon rebota
+     * de un vecino, se descarta como duplicado por el mismo camino que
+     * cualquier otro, sin una ruta de código especial para "es mío".
      */
     private fun refreshAdvertisedBeacon() {
         val packet = LocalBeaconFactory.makeBeacon(
@@ -149,7 +164,7 @@ class EmergencyViewModel @JvmOverloads constructor(
             nonceGenerator = nonceGenerator
         )
         dedupCache.insertIfAbsent(DedupCache.Key(packet.deviceIdHash, packet.nonce))
-        advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet))
+        relayQueue.updateOwnBeacon(packet)
     }
 
     /**
@@ -160,10 +175,16 @@ class EmergencyViewModel @JvmOverloads constructor(
     private fun handleReceivedManufacturerData(data: ByteArray) {
         val packet = BeaconPacketCodec.decode(data) ?: return
         val key = DedupCache.Key(packet.deviceIdHash, packet.nonce)
-        if (dedupCache.insertIfAbsent(key)) {
-            appendLogEntry(LogEntry.Kind.BeaconReceived(packet.deviceIdHash, packet.ttl, packet.sequence))
-        } else {
+        if (!dedupCache.insertIfAbsent(key)) {
             appendLogEntry(LogEntry.Kind.DuplicateDiscarded(packet.deviceIdHash, packet.nonce))
+            return
+        }
+        appendLogEntry(LogEntry.Kind.BeaconReceived(packet.deviceIdHash, packet.ttl, packet.sequence))
+        val relayed = RelayPolicy.decrementedForRelay(packet)
+        if (relayed != null) {
+            relayQueue.enqueueForeignBeacon(relayed)
+        } else {
+            appendLogEntry(LogEntry.Kind.TtlExhausted(packet.deviceIdHash, packet.sequence))
         }
     }
 

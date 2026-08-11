@@ -8,6 +8,7 @@ class LogEntry(val timestampMillis: Long, val kind: Kind) {
         class Transition(val state: PersonState, val sequence: Int) : Kind()
         class BeaconReceived(val deviceIdHash: ByteArray, val ttl: Int, val sequence: Int) : Kind()
         class DuplicateDiscarded(val deviceIdHash: ByteArray, val nonce: Int) : Kind()
+        class TtlExhausted(val deviceIdHash: ByteArray, val sequence: Int) : Kind()
         class Info(val message: String) : Kind()
     }
 }
