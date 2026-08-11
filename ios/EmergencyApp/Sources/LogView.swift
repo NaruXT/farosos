@@ -41,6 +41,7 @@ struct LogView: View {
         case .transition(let state, _): return label(for: state)
         case .beaconReceived: return "RECIBIDO"
         case .duplicateDiscarded: return "DESCARTADO POR DUPLICADO"
+        case .ttlExhausted: return "DESCARTADO POR TTL AGOTADO"
         case .info: return "INFO"
         }
     }
@@ -53,6 +54,8 @@ struct LogView: View {
             return "De \(shortHex(deviceIdHash)) · TTL \(ttl) · Secuencia \(sequence)"
         case .duplicateDiscarded(let deviceIdHash, let nonce):
             return "De \(shortHex(deviceIdHash)) · Nonce \(nonce)"
+        case .ttlExhausted(let deviceIdHash, let sequence):
+            return "De \(shortHex(deviceIdHash)) · Secuencia \(sequence)"
         case .info(let message):
             return message
         }

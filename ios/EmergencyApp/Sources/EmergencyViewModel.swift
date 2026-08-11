@@ -12,15 +12,15 @@ import PersonStateMachine
 /// ticket; es una decisión de diseño propia (dónde guardarlo, cómo re-armar
 /// los timers en curso) que merece su propio issue.
 ///
-/// Limitación conocida (#6): la interoperabilidad real de las dos radios BLE
-/// (advertising + scanning entre dos teléfonos distintos) no se verificó en
-/// esta sesión por falta de un segundo dispositivo físico — eso es
-/// exactamente lo que cubre la ticket #10 (verificación de campo A→B→C).
-/// Aquí se confirmó que advertising/scanning arrancan sin error en el
-/// simulador y que el pipeline decode→dedup→log es correcto (cubierto por
-/// los tests de `BeaconRadio`). El emisor de iOS usa GATT en vez de
-/// Manufacturer Data para transmitir — ver `BeaconGattService` para el
-/// porqué (revisión de la decisión 2 del spec).
+/// Limitación conocida (#6/#8): la interoperabilidad real entre 3 teléfonos
+/// (A→B→C con TTL reducido en 1 por salto) no se verificó en esta sesión
+/// por falta de dispositivos físicos — eso es exactamente lo que cubre la
+/// ticket #10 (verificación de campo). Aquí se confirmó que
+/// advertising/scanning/rotación arrancan sin error en el simulador y que
+/// el pipeline decode→dedup→relay→log es correcto (cubierto por los tests
+/// de `BeaconRadio`). El emisor de iOS usa GATT en vez de Manufacturer Data
+/// para transmitir — ver `BeaconGattService` para el porqué (revisión de la
+/// decisión 2 del spec).
 @MainActor
 final class EmergencyViewModel: ObservableObject {
     @Published private(set) var state: PersonState = .dormido
@@ -41,6 +41,7 @@ final class EmergencyViewModel: ObservableObject {
     private let nonceGenerator: NonceGenerating = RandomNonceGenerator()
     private let advertiser = BleAdvertiser()
     private let scanner = BleScanner()
+    private let relayQueue: RelayQueue
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -49,17 +50,20 @@ final class EmergencyViewModel: ObservableObject {
         self.shakeDuration = shakeDuration
         self.confirmationWindow = confirmationWindow
         deviceIdHash = KeychainDeviceIdentity.deviceIdHash()
+        let scheduler = RealScheduler()
         machine = PersonStateMachine(
-            scheduler: RealScheduler(),
+            scheduler: scheduler,
             shakeDuration: shakeDuration,
             confirmationWindow: confirmationWindow
         )
+        relayQueue = RelayQueue(scheduler: scheduler)
         appendLogEntry(.transition(state: machine.state, sequence: machine.sequence))
         machine.onTransition = { [weak self] newState in
             self?.handleTransition(to: newState)
         }
         wireRadio()
         refreshAdvertisedBeacon()
+        relayQueue.start()
     }
 
     func simulateEarthquake() { machine.simulateEarthquake() }
@@ -85,7 +89,7 @@ final class EmergencyViewModel: ObservableObject {
         logEntries.append(LogEntry(timestamp: Date(), kind: kind))
     }
 
-    // MARK: - BLE (advertising + scanning + dedup, ticket #6)
+    // MARK: - BLE (advertising + scanning + dedup + relay, tickets #6/#8)
 
     private func wireRadio() {
         advertiser.onError = onMain { viewModel, message in viewModel.appendLogEntry(.info(message: message)) }
@@ -99,6 +103,12 @@ final class EmergencyViewModel: ObservableObject {
         }
         scanner.onGattPacketData = onMain { viewModel, data in
             viewModel.handleReceivedPacketData(data, decode: BeaconPacketCodec.decode)
+        }
+        // `RelayQueue` ya despacha en el hilo principal (su scheduler es el
+        // mismo `RealScheduler` de la Máquina A), así que esto no necesita
+        // pasar por `onMain`.
+        relayQueue.onCurrentPacketChanged = { [weak self] packet in
+            self?.advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet))
         }
         scanner.start()
     }
@@ -114,13 +124,13 @@ final class EmergencyViewModel: ObservableObject {
     }
 
     /// Reconstruye el `BeaconPacket` local a partir del estado actual de la
-    /// Máquina A y lo pone a publicar. Se auto-registra en la propia caché
-    /// de dedup al emitir (decisión 12): si este mismo beacon rebota de un
-    /// vecino, se descarta como duplicado por el mismo camino que cualquier
-    /// otro, sin una ruta de código especial para "es mío". El payload que
-    /// recibe `advertiser` es el `BeaconPacket` crudo (sin envoltorio de
-    /// Manufacturer Data) — iOS lo transmite vía GATT, no advertising
-    /// directo (ver `BeaconGattService`).
+    /// Máquina A y lo pone en la cola de relay (decisión 9): el propio
+    /// beacon siempre está presente ahí, junto a los beacons ajenos
+    /// pendientes de retransmitir, rotando en round-robin. Se auto-registra
+    /// en la propia caché de dedup al emitir (decisión 12): si este mismo
+    /// beacon rebota de un vecino, se descarta como duplicado por el mismo
+    /// camino que cualquier otro, sin una ruta de código especial para "es
+    /// mío".
     private func refreshAdvertisedBeacon() {
         let packet = LocalBeaconFactory.makeBeacon(
             deviceIdHash: deviceIdHash,
@@ -130,20 +140,25 @@ final class EmergencyViewModel: ObservableObject {
             nonceGenerator: nonceGenerator
         )
         dedupCache.insertIfAbsent(DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
-        advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet))
+        relayQueue.updateOwnBeacon(packet)
     }
 
     /// Punto de entrada compartido por ambas rutas de recepción (Manufacturer
     /// Data directa y GATT) — cada una trae su propio `decode` porque el
-    /// envoltorio de bytes difiere, pero el dedup + log de ahí en adelante
-    /// es idéntico sin importar el transporte.
+    /// envoltorio de bytes difiere, pero el dedup + log + relay de ahí en
+    /// adelante es idéntico sin importar el transporte.
     private func handleReceivedPacketData(_ data: Data, decode: (Data) -> BeaconPacket?) {
         guard let packet = decode(data) else { return }
         let key = DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce)
-        if dedupCache.insertIfAbsent(key) {
-            appendLogEntry(.beaconReceived(deviceIdHash: packet.deviceIdHash, ttl: packet.ttl, sequence: packet.sequence))
-        } else {
+        guard dedupCache.insertIfAbsent(key) else {
             appendLogEntry(.duplicateDiscarded(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
+            return
+        }
+        appendLogEntry(.beaconReceived(deviceIdHash: packet.deviceIdHash, ttl: packet.ttl, sequence: packet.sequence))
+        if let relayed = RelayPolicy.decrementedForRelay(packet) {
+            relayQueue.enqueueForeignBeacon(relayed)
+        } else {
+            appendLogEntry(.ttlExhausted(deviceIdHash: packet.deviceIdHash, sequence: packet.sequence))
         }
     }
 

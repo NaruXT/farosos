@@ -16,8 +16,9 @@ let package = Package(
         .target(name: "PacketCodec"),
         .testTarget(name: "PacketCodecTests", dependencies: ["PacketCodec"]),
         .target(name: "PersonStateMachine", dependencies: ["PacketCodec"]),
-        .testTarget(name: "PersonStateMachineTests", dependencies: ["PersonStateMachine"]),
-        .target(name: "BeaconRadio", dependencies: ["PacketCodec"]),
-        .testTarget(name: "BeaconRadioTests", dependencies: ["BeaconRadio"])
+        .target(name: "TestSupport", dependencies: ["PersonStateMachine"]),
+        .testTarget(name: "PersonStateMachineTests", dependencies: ["PersonStateMachine", "TestSupport"]),
+        .target(name: "BeaconRadio", dependencies: ["PacketCodec", "PersonStateMachine"]),
+        .testTarget(name: "BeaconRadioTests", dependencies: ["BeaconRadio", "TestSupport"])
     ]
 )

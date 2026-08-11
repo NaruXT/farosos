@@ -12,6 +12,7 @@ struct LogEntry: Identifiable {
         case transition(state: PersonState, sequence: UInt8)
         case beaconReceived(deviceIdHash: Data, ttl: UInt8, sequence: UInt8)
         case duplicateDiscarded(deviceIdHash: Data, nonce: UInt16)
+        case ttlExhausted(deviceIdHash: Data, sequence: UInt8)
         case info(message: String)
     }
 }

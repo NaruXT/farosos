@@ -1,6 +1,7 @@
 import XCTest
 import PacketCodec
 @testable import PersonStateMachine
+import TestSupport
 
 final class PersonStateMachineTests: XCTestCase {
     func testSimulateEarthquakeTransitionsFromDormidoToActivoSinConfirmar() {
