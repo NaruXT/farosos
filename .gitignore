@@ -1,0 +1,21 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Android Studio
+.idea/
+local.properties
+*.iml
+
+# macOS
+.DS_Store

@@ -1,0 +1,92 @@
+{
+  "$comment": "Fuente de verdad compartida para los tests de encode/decode de Swift y Kotlin. Ver spec/packet-format.md. Generados con struct de Python (referencia independiente), no con el propio codec de ninguna plataforma.",
+  "byte_order": "little-endian",
+  "packet_size_bytes": 26,
+  "field_order": [
+    "magic",
+    "version",
+    "message_type",
+    "device_id_hash",
+    "status",
+    "latitude_e7",
+    "longitude_e7",
+    "timestamp",
+    "ttl",
+    "nonce",
+    "sequence"
+  ],
+  "vectors": [
+    {
+      "name": "beacon_ok_recien_emitido",
+      "description": "BEACON típico, estado OK, TTL recién emitido (16)",
+      "fields": {
+        "magic": "0xE7",
+        "version": 1,
+        "message_type": 0,
+        "device_id_hash": "aabbccddeeff",
+        "status": 1,
+        "latitude_e7": 194326000,
+        "longitude_e7": -991332000,
+        "timestamp": 1700000000,
+        "ttl": 16,
+        "nonce": 48879,
+        "sequence": 0
+      },
+      "bytes_hex": "e70100aabbccddeeff01f02d950b6079e9c400f1536510efbe00"
+    },
+    {
+      "name": "beacon_ayuda_retransmitido",
+      "description": "AYUDA_SOLICITADA, coordenadas negativas (hemisferio sur/oeste), ya retransmitido varias veces",
+      "fields": {
+        "magic": "0xE7",
+        "version": 1,
+        "message_type": 0,
+        "device_id_hash": "112233445566",
+        "status": 2,
+        "latitude_e7": -334489000,
+        "longitude_e7": -707679000,
+        "timestamp": 1700000500,
+        "ttl": 9,
+        "nonce": 4242,
+        "sequence": 3
+      },
+      "bytes_hex": "e7010011223344556602581a10ece8acd1d5f4f2536509921003"
+    },
+    {
+      "name": "beacon_silencio_timeout_ultimo_salto",
+      "description": "SILENCIO_TIMEOUT, TTL=1 (último salto antes de morir), nonce en su valor máximo uint16",
+      "fields": {
+        "magic": "0xE7",
+        "version": 1,
+        "message_type": 0,
+        "device_id_hash": "ffeeddccbbaa",
+        "status": 3,
+        "latitude_e7": 405000000,
+        "longitude_e7": -740000000,
+        "timestamp": 1700001000,
+        "ttl": 1,
+        "nonce": 65535,
+        "sequence": 5
+      },
+      "bytes_hex": "e70100ffeeddccbbaa0340cf2318007fe4d3e8f4536501ffff05"
+    },
+    {
+      "name": "beacon_ttl_agotado",
+      "description": "Edge case: TTL ya en 0 (paquete muerto, no debe retransmitirse pero sí debe decodificar sin error), lat/lon en 0, sequence en su valor máximo uint8",
+      "fields": {
+        "magic": "0xE7",
+        "version": 1,
+        "message_type": 0,
+        "device_id_hash": "0102030405ff",
+        "status": 1,
+        "latitude_e7": 0,
+        "longitude_e7": 0,
+        "timestamp": 1700002000,
+        "ttl": 0,
+        "nonce": 1,
+        "sequence": 255
+      },
+      "bytes_hex": "e701000102030405ff010000000000000000d0f85365000100ff"
+    }
+  ]
+}
