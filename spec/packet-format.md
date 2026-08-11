@@ -81,7 +81,7 @@ Resueltas en sesión de grilling previa a la implementación. Registradas aquí
 porque no son derivables del código ni de la tabla original.
 
 1. **Stack**: nativo puro — Swift (iOS) + Kotlin (Android). Sin framework cross-platform, para tener control total sobre el framing BLE.
-2. **Modelo BLE**: advertising/scanning puro, **sin conexión GATT** en Fase 1. La mención a "GATT crudo" del prompt original queda descartada — es 100% broadcast.
+2. **Modelo BLE**: advertising/scanning puro, **sin conexión GATT** en Fase 1. La mención a "GATT crudo" del prompt original queda descartada — es 100% broadcast. ⚠ Revisado parcialmente por la decisión 13: el *lado que emite* en iOS sí usa GATT, por una restricción de la API que esta sesión de grilling no había detectado.
 3. **Alcance de ejecución**: foreground-only para el MVP. iOS strippea `Manufacturer Specific Data` del advertisement en background — background real queda como riesgo conocido de Fase 2+.
 4. **Extended Advertising**: descartado. `CoreBluetooth` no expone Extended Advertising para el rol de anunciante vía API pública en iOS, sin importar el chip. Fase 1 usa advertising **legacy** (máx. 31 bytes); no hay margen reservado para firma/autenticación futura con este formato.
 5. **Endianness**: little-endian en todos los campos multi-byte (convención nativa de BLE/GAP).
@@ -92,6 +92,10 @@ porque no son derivables del código ni de la tabla original.
 10. **Secuencia**: comparación simple de enteros (`nueva > vieja`), sin aritmética de wraparound. Un dispositivo real cambia de estado un puñado de veces por evento; dar la vuelta a 256 cambios es un caso extremo documentado y no manejado.
 11. **Log**: en pantalla dentro de la app, como mecanismo **principal** de verificación en campo (no solo consola/Xcode/Logcat) — necesario para poder separar físicamente los 3 teléfonos de prueba sin cables.
 12. **Auto-dedup**: el emisor inserta su propio beacon en su caché de dedup al emitirlo, para que un rebote de su propio paquete se descarte por el mismo camino de "duplicado por caché", sin una ruta de código especial.
+13. **Emisión en iOS: GATT en vez de Manufacturer Data (revisión de la decisión 2, ticket #6)**. `CBPeripheralManager.startAdvertising` en iOS solo admite `CBAdvertisementDataLocalNameKey` y `CBAdvertisementDataServiceUUIDsKey` en el rol periférico — Manufacturer Specific Data **no** es una clave soportada al anunciar (confirmado en la documentación de Apple y en una respuesta de un ingeniero de Apple DTS en su foro; cualquier otra clave produce error). Esto no se detectó en la sesión de grilling original, que se enfocó en el límite de 31 bytes y en Extended Advertising (decisión 4), no en qué claves admite la API de advertising del rol periférico. El rol *central* (escaneo) no tiene esta restricción — sí puede leer Manufacturer Data de otros peers (p. ej. Android) con normalidad.
+    - **Android no cambia**: sigue emitiendo por advertising legacy puro con Manufacturer Data, sin GATT — no tiene esta limitación.
+    - **iOS al emitir**: el advertisement solo señaliza "soy un nodo Farosos" (un Service UUID fijo + Local Name `"Farosos"`, ver `BeaconGattService` en `ios/Sources/BeaconRadio/`). El `BeaconPacket` real de 26 bytes viaja sin envoltorio adicional como el valor de una característica GATT de solo lectura; un central que reconoce el Service UUID se conecta, la lee, y se desconecta — el formato de wire de 26 bytes no cambia en absoluto, solo el transporte del lado emisor de iOS.
+    - **iOS al escanear**: sigue escaneando ambos casos — decodifica Manufacturer Data directamente si el advertisement la trae (p. ej. de un peer Android), o se conecta por GATT si detecta el Service UUID de Farosos (p. ej. de otro peer iOS). Ambas rutas convergen en el mismo pipeline de dedup + log.
 
 ## Criterio de éxito de Fase 1
 

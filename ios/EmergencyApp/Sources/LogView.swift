@@ -18,9 +18,9 @@ struct LogView: View {
             List(entries.reversed()) { entry in
                 HStack {
                     VStack(alignment: .leading) {
-                        Text(label(for: entry.state))
+                        Text(title(for: entry.kind))
                             .font(.body.bold())
-                        Text("Secuencia \(entry.sequence)")
+                        Text(detail(for: entry.kind))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospaced()
@@ -34,6 +34,32 @@ struct LogView: View {
             }
             .navigationTitle("Actividad")
         }
+    }
+
+    private func title(for kind: LogEntry.Kind) -> String {
+        switch kind {
+        case .transition(let state, _): return label(for: state)
+        case .beaconReceived: return "RECIBIDO"
+        case .duplicateDiscarded: return "DESCARTADO POR DUPLICADO"
+        case .info: return "INFO"
+        }
+    }
+
+    private func detail(for kind: LogEntry.Kind) -> String {
+        switch kind {
+        case .transition(_, let sequence):
+            return "Secuencia \(sequence)"
+        case .beaconReceived(let deviceIdHash, let ttl, let sequence):
+            return "De \(shortHex(deviceIdHash)) · TTL \(ttl) · Secuencia \(sequence)"
+        case .duplicateDiscarded(let deviceIdHash, let nonce):
+            return "De \(shortHex(deviceIdHash)) · Nonce \(nonce)"
+        case .info(let message):
+            return message
+        }
+    }
+
+    private func shortHex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
     }
 
     private func label(for state: PersonState) -> String {

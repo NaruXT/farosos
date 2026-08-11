@@ -17,6 +17,8 @@ targets:
         product: PersonStateMachine
       - package: Farosos
         product: PacketCodec
+      - package: Farosos
+        product: BeaconRadio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.farosos.EmergencyApp
@@ -28,3 +30,4 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Farosos usa Bluetooth para difundir y recibir beacons de estado con teléfonos cercanos, sin internet ni señal celular."

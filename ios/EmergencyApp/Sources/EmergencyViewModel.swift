@@ -1,14 +1,8 @@
+import BeaconRadio
 import Combine
 import Foundation
 import PacketCodec
 import PersonStateMachine
-
-struct LogEntry: Identifiable {
-    let id = UUID()
-    let timestamp: Date
-    let state: PersonState
-    let sequence: UInt8
-}
 
 /// Limitación conocida: el estado vive solo en memoria dentro de esta
 /// instancia. La recuperación tardía desde `SILENCIO_TIMEOUT` funciona
@@ -17,6 +11,16 @@ struct LogEntry: Identifiable {
 /// que "abrir la app más tarde" también cubra ese caso) queda fuera de esta
 /// ticket; es una decisión de diseño propia (dónde guardarlo, cómo re-armar
 /// los timers en curso) que merece su propio issue.
+///
+/// Limitación conocida (#6): la interoperabilidad real de las dos radios BLE
+/// (advertising + scanning entre dos teléfonos distintos) no se verificó en
+/// esta sesión por falta de un segundo dispositivo físico — eso es
+/// exactamente lo que cubre la ticket #10 (verificación de campo A→B→C).
+/// Aquí se confirmó que advertising/scanning arrancan sin error en el
+/// simulador y que el pipeline decode→dedup→log es correcto (cubierto por
+/// los tests de `BeaconRadio`). El emisor de iOS usa GATT en vez de
+/// Manufacturer Data para transmitir — ver `BeaconGattService` para el
+/// porqué (revisión de la decisión 2 del spec).
 @MainActor
 final class EmergencyViewModel: ObservableObject {
     @Published private(set) var state: PersonState = .dormido
@@ -32,21 +36,30 @@ final class EmergencyViewModel: ObservableObject {
     private var countdownDeadline: Date?
     private var countdownTimer: Timer?
 
+    private let deviceIdHash: Data
+    private let dedupCache = DedupCache()
+    private let nonceGenerator: NonceGenerating = RandomNonceGenerator()
+    private let advertiser = BleAdvertiser()
+    private let scanner = BleScanner()
+
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
     /// de gracia y una ventana de 15-30 min — ambas configurables aquí mismo.
     init(shakeDuration: TimeInterval = 3, confirmationWindow: TimeInterval = 20) {
         self.shakeDuration = shakeDuration
         self.confirmationWindow = confirmationWindow
+        deviceIdHash = KeychainDeviceIdentity.deviceIdHash()
         machine = PersonStateMachine(
             scheduler: RealScheduler(),
             shakeDuration: shakeDuration,
             confirmationWindow: confirmationWindow
         )
-        appendLogEntry()
+        appendLogEntry(.transition(state: machine.state, sequence: machine.sequence))
         machine.onTransition = { [weak self] newState in
             self?.handleTransition(to: newState)
         }
+        wireRadio()
+        refreshAdvertisedBeacon()
     }
 
     func simulateEarthquake() { machine.simulateEarthquake() }
@@ -55,7 +68,8 @@ final class EmergencyViewModel: ObservableObject {
 
     private func handleTransition(to newState: PersonState) {
         state = newState
-        appendLogEntry()
+        appendLogEntry(.transition(state: newState, sequence: machine.sequence))
+        refreshAdvertisedBeacon()
 
         switch newState {
         case .activoSinConfirmar:
@@ -67,8 +81,70 @@ final class EmergencyViewModel: ObservableObject {
         }
     }
 
-    private func appendLogEntry() {
-        logEntries.append(LogEntry(timestamp: Date(), state: machine.state, sequence: machine.sequence))
+    private func appendLogEntry(_ kind: LogEntry.Kind) {
+        logEntries.append(LogEntry(timestamp: Date(), kind: kind))
+    }
+
+    // MARK: - BLE (advertising + scanning + dedup, ticket #6)
+
+    private func wireRadio() {
+        advertiser.onError = onMain { viewModel, message in viewModel.appendLogEntry(.info(message: message)) }
+        scanner.onError = onMain { viewModel, message in viewModel.appendLogEntry(.info(message: message)) }
+        // Manufacturer Data directa (p. ej. peers Android, que sí pueden
+        // anunciarla): se decodifica con el mismo envoltorio con el que se
+        // emite. GATT (peers iOS, ver `BeaconGattService`): el valor leído
+        // ya es el `BeaconPacket` crudo, sin envoltorio.
+        scanner.onManufacturerData = onMain { viewModel, data in
+            viewModel.handleReceivedPacketData(data, decode: ManufacturerDataFrame.decode)
+        }
+        scanner.onGattPacketData = onMain { viewModel, data in
+            viewModel.handleReceivedPacketData(data, decode: BeaconPacketCodec.decode)
+        }
+        scanner.start()
+    }
+
+    /// Reenvía un callback de `BleAdvertiser`/`BleScanner` (que puede llegar
+    /// desde cualquier hilo) de vuelta al `MainActor`, sin repetir el mismo
+    /// `[weak self] in Task { @MainActor in ... }` en cada call site.
+    private func onMain<Value>(_ work: @escaping (EmergencyViewModel, Value) -> Void) -> (Value) -> Void {
+        { [weak self] value in
+            guard let self else { return }
+            Task { @MainActor in work(self, value) }
+        }
+    }
+
+    /// Reconstruye el `BeaconPacket` local a partir del estado actual de la
+    /// Máquina A y lo pone a publicar. Se auto-registra en la propia caché
+    /// de dedup al emitir (decisión 12): si este mismo beacon rebota de un
+    /// vecino, se descarta como duplicado por el mismo camino que cualquier
+    /// otro, sin una ruta de código especial para "es mío". El payload que
+    /// recibe `advertiser` es el `BeaconPacket` crudo (sin envoltorio de
+    /// Manufacturer Data) — iOS lo transmite vía GATT, no advertising
+    /// directo (ver `BeaconGattService`).
+    private func refreshAdvertisedBeacon() {
+        let packet = LocalBeaconFactory.makeBeacon(
+            deviceIdHash: deviceIdHash,
+            status: machine.status,
+            sequence: machine.sequence,
+            now: Date(),
+            nonceGenerator: nonceGenerator
+        )
+        dedupCache.insertIfAbsent(DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
+        advertiser.updateAdvertisedData(BeaconPacketCodec.encode(packet))
+    }
+
+    /// Punto de entrada compartido por ambas rutas de recepción (Manufacturer
+    /// Data directa y GATT) — cada una trae su propio `decode` porque el
+    /// envoltorio de bytes difiere, pero el dedup + log de ahí en adelante
+    /// es idéntico sin importar el transporte.
+    private func handleReceivedPacketData(_ data: Data, decode: (Data) -> BeaconPacket?) {
+        guard let packet = decode(data) else { return }
+        let key = DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce)
+        if dedupCache.insertIfAbsent(key) {
+            appendLogEntry(.beaconReceived(deviceIdHash: packet.deviceIdHash, ttl: packet.ttl, sequence: packet.sequence))
+        } else {
+            appendLogEntry(.duplicateDiscarded(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
+        }
     }
 
     private func startCountdown(duration: TimeInterval) {
