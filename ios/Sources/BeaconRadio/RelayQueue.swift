@@ -36,6 +36,15 @@ public final class RelayQueue {
 
     public var onCurrentPacketChanged: ((BeaconPacket) -> Void)?
 
+    /// Se dispara cuando la lista de beacons ajenos cambia entre vacía y
+    /// no-vacía — fuente de verdad para la transición de vuelta
+    /// `SINCRONIZADO_IDLE → GATEWAY_ACTIVO` de la Máquina B (ticket #18).
+    /// `true`: hay al menos una entrada pendiente (pasó de vacía a
+    /// no-vacía). `false`: volvió a quedar vacía. No se dispara en updates
+    /// que no cambian ese estado (p. ej. reemplazar una entrada existente
+    /// por otra con la misma clave).
+    public var onForeignQueuePendingChanged: ((Bool) -> Void)?
+
     /// Señal simple inyectada por quien gobierne la Máquina B — esta clase
     /// no depende de `NetworkRoleMachine` directamente. `false` (normal):
     /// desalojo LRU puro, igual que Fase 1. `true` (`BAJO_CONSUMO`): un
@@ -83,11 +92,34 @@ public final class RelayQueue {
     /// retransmitir. Si ya había una entrada con la misma clave
     /// (deviceIdHash + nonce), la reemplaza en vez de duplicarla.
     public func enqueueForeignBeacon(_ packet: BeaconPacket) {
+        let wasEmpty = foreignEntries.isEmpty
         foreignEntries.removeAll {
             $0.packet.deviceIdHash == packet.deviceIdHash && $0.packet.nonce == packet.nonce
         }
         foreignEntries.append(Entry(packet: packet, slot: .foreign))
         evictIfNeeded()
+        notifyForeignQueuePendingChangeIfNeeded(wasEmpty: wasEmpty)
+    }
+
+    /// Retira una entrada ajena de la cola sin reemplazarla — a diferencia
+    /// de `enqueueForeignBeacon`, este es el único camino por el que la
+    /// cola de ajenos puede volver a quedar vacía. Quién la invoca y con
+    /// qué criterio (p. ej. TTL agotado) queda para un ticket de wiring
+    /// futuro; por ahora solo existe para que `onForeignQueuePendingChanged`
+    /// sea alcanzable en ambas direcciones. No-op si la clave no está en
+    /// la cola.
+    public func removeForeignBeacon(deviceIdHash: Data, nonce: UInt16) {
+        let wasEmpty = foreignEntries.isEmpty
+        foreignEntries.removeAll {
+            $0.packet.deviceIdHash == deviceIdHash && $0.packet.nonce == nonce
+        }
+        notifyForeignQueuePendingChangeIfNeeded(wasEmpty: wasEmpty)
+    }
+
+    private func notifyForeignQueuePendingChangeIfNeeded(wasEmpty: Bool) {
+        let isEmpty = foreignEntries.isEmpty
+        guard wasEmpty != isEmpty else { return }
+        onForeignQueuePendingChanged?(!isEmpty)
     }
 
     private func evictIfNeeded() {

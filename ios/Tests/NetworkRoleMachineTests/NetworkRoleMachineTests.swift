@@ -61,6 +61,26 @@ final class NetworkRoleMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .soloRetransmite)
     }
 
+    func testSomethingPendingTransitionsFromSincronizadoIdleToGatewayActivo() {
+        let machine = NetworkRoleMachine()
+        machine.appActivated()
+        machine.connectivityDetected()
+        machine.nothingPendingToSync()
+
+        machine.somethingPendingToSync()
+
+        XCTAssertEqual(machine.state, .gatewayActivo)
+    }
+
+    func testSomethingPendingIgnoredOutsideSincronizadoIdle() {
+        let machine = NetworkRoleMachine()
+        machine.appActivated()
+
+        machine.somethingPendingToSync() // en soloRetransmite, debe ser no-op
+
+        XCTAssertEqual(machine.state, .soloRetransmite)
+    }
+
     func testLowBatteryTransitionsToBajoConsumoFromSoloRetransmite() {
         let machine = NetworkRoleMachine()
         machine.appActivated()

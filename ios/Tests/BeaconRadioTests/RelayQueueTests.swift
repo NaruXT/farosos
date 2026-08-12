@@ -341,4 +341,102 @@ final class RelayQueueTests: XCTestCase {
 
         XCTAssertEqual(observed, [own, foreignB, foreignC, own])
     }
+
+    // MARK: - Señal de cola de ajenos vacía↔no-vacía (ticket #18)
+
+    func testForeignQueuePendingChangedFiresTrueOnFirstForeignBeacon() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+        let foreign = packet(deviceByte: 2, nonce: 1)
+
+        queue.enqueueForeignBeacon(foreign)
+
+        XCTAssertEqual(observed, [true])
+    }
+
+    func testForeignQueuePendingChangedNotFiredOnSubsequentEnqueueWhileNonEmpty() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        let foreignA = packet(deviceByte: 2, nonce: 1)
+        let foreignB = packet(deviceByte: 3, nonce: 1)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+
+        queue.enqueueForeignBeacon(foreignB)
+
+        XCTAssertEqual(observed, [])
+    }
+
+    func testForeignQueuePendingChangedNotFiredWhenReplacingSameKey() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        let firstSeen = packet(deviceByte: 2, nonce: 1, ttl: 10)
+        let sameKeyAgain = packet(deviceByte: 2, nonce: 1, ttl: 3)
+        queue.enqueueForeignBeacon(firstSeen)
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+
+        queue.enqueueForeignBeacon(sameKeyAgain)
+
+        XCTAssertEqual(observed, [], "reemplazar la misma clave no cambia el estado vacío/no-vacío")
+    }
+
+    func testForeignQueuePendingChangedFiresFalseWhenLastForeignBeaconRemoved() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        let foreign = packet(deviceByte: 2, nonce: 1)
+        queue.enqueueForeignBeacon(foreign)
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+
+        queue.removeForeignBeacon(deviceIdHash: foreign.deviceIdHash, nonce: foreign.nonce)
+
+        XCTAssertEqual(observed, [false])
+    }
+
+    func testForeignQueuePendingChangedNotFiredWhenRemovingWithOthersStillPending() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        let foreignA = packet(deviceByte: 2, nonce: 1)
+        let foreignB = packet(deviceByte: 3, nonce: 1)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+
+        queue.removeForeignBeacon(deviceIdHash: foreignA.deviceIdHash, nonce: foreignA.nonce)
+
+        XCTAssertEqual(observed, [])
+    }
+
+    func testRemoveForeignBeaconIsNoOpForUnknownKey() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler)
+        var observed: [Bool] = []
+        queue.onForeignQueuePendingChanged = { observed.append($0) }
+
+        queue.removeForeignBeacon(deviceIdHash: Data([9, 9, 9, 9, 9, 9]), nonce: 99)
+
+        XCTAssertEqual(observed, [])
+    }
+
+    func testRemoveForeignBeaconRemovesItFromRotation() {
+        let scheduler = FakeScheduler()
+        let queue = RelayQueue(scheduler: scheduler, window: 1)
+        var observed: [BeaconPacket] = []
+        queue.onCurrentPacketChanged = { observed.append($0) }
+        let own = packet(deviceByte: 1, nonce: 1)
+        let foreign = packet(deviceByte: 2, nonce: 1)
+
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreign)
+        queue.removeForeignBeacon(deviceIdHash: foreign.deviceIdHash, nonce: foreign.nonce)
+        queue.start()
+        scheduler.advance(by: 1)
+
+        XCTAssertEqual(observed, [own, own], "sin beacons ajenos, la rotación solo tiene al propio beacon")
+    }
 }
