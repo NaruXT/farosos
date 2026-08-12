@@ -1,6 +1,7 @@
 import BeaconRadio
 import Combine
 import Foundation
+import NetworkRoleMachine
 import PacketCodec
 import PersonStateMachine
 
@@ -24,6 +25,7 @@ import PersonStateMachine
 @MainActor
 final class EmergencyViewModel: ObservableObject {
     @Published private(set) var state: PersonState = .dormido
+    @Published private(set) var networkRole: NetworkRole = .apagado
     @Published private(set) var logEntries: [LogEntry] = []
     /// Cuenta regresiva visible durante el sacudón (timer de gracia) y
     /// durante la ventana de confirmación — la misma UI sirve para ambas,
@@ -31,6 +33,7 @@ final class EmergencyViewModel: ObservableObject {
     @Published private(set) var countdownSecondsRemaining: Int?
 
     private let machine: PersonStateMachine
+    private let networkMachine = NetworkRoleMachine()
     private let shakeDuration: TimeInterval
     private let confirmationWindow: TimeInterval
     private var countdownDeadline: Date?
@@ -64,11 +67,35 @@ final class EmergencyViewModel: ObservableObject {
         wireRadio()
         refreshAdvertisedBeacon()
         relayQueue.start()
+
+        networkMachine.onTransition = { [weak self] newRole in
+            self?.handleNetworkRoleTransition(to: newRole)
+        }
+        // La app está en primer plano desde que se crea este view model — la
+        // Máquina B no requiere confirmación explícita del usuario para
+        // salir de `APAGADO`, a diferencia de la Máquina A.
+        networkMachine.appActivated()
     }
 
     func simulateEarthquake() { machine.simulateEarthquake() }
     func confirmOk() { machine.confirmOk() }
     func requestHelp() { machine.requestHelp() }
+
+    // MARK: - Máquina B (rol de red, ticket #13)
+    //
+    // Sin BLE ni batería/conectividad reales todavía — estas señales se
+    // disparan a mano desde el panel "Red" de `LogView`, igual que
+    // "SIMULAR TERREMOTO" dispara la Máquina A sin un sismo real.
+
+    func simulateConnectivityDetected() { networkMachine.connectivityDetected() }
+    func simulateNothingPendingToSync() { networkMachine.nothingPendingToSync() }
+    func simulateLowBattery() { networkMachine.updateBattery(percent: 10, isCharging: false) }
+    func simulateBatteryRecovered() { networkMachine.updateBattery(percent: 30, isCharging: false) }
+
+    private func handleNetworkRoleTransition(to newRole: NetworkRole) {
+        networkRole = newRole
+        appendLogEntry(.networkRoleTransition(role: newRole))
+    }
 
     private func handleTransition(to newState: PersonState) {
         state = newState

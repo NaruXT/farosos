@@ -35,7 +35,14 @@ struct EmergencyView: View {
                 }
             }
             .sheet(isPresented: $showingLog) {
-                LogView(entries: viewModel.logEntries)
+                LogView(
+                    entries: viewModel.logEntries,
+                    networkRole: viewModel.networkRole,
+                    onConnectivityDetected: viewModel.simulateConnectivityDetected,
+                    onNothingPendingToSync: viewModel.simulateNothingPendingToSync,
+                    onLowBattery: viewModel.simulateLowBattery,
+                    onBatteryRecovered: viewModel.simulateBatteryRecovered
+                )
             }
         }
     }

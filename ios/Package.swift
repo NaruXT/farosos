@@ -10,12 +10,15 @@ let package = Package(
     products: [
         .library(name: "PacketCodec", targets: ["PacketCodec"]),
         .library(name: "PersonStateMachine", targets: ["PersonStateMachine"]),
+        .library(name: "NetworkRoleMachine", targets: ["NetworkRoleMachine"]),
         .library(name: "BeaconRadio", targets: ["BeaconRadio"])
     ],
     targets: [
         .target(name: "PacketCodec"),
         .testTarget(name: "PacketCodecTests", dependencies: ["PacketCodec"]),
         .target(name: "PersonStateMachine", dependencies: ["PacketCodec"]),
+        .target(name: "NetworkRoleMachine"),
+        .testTarget(name: "NetworkRoleMachineTests", dependencies: ["NetworkRoleMachine"]),
         .target(name: "TestSupport", dependencies: ["PersonStateMachine"]),
         .testTarget(name: "PersonStateMachineTests", dependencies: ["PersonStateMachine", "TestSupport"]),
         .target(name: "BeaconRadio", dependencies: ["PacketCodec", "PersonStateMachine"]),
