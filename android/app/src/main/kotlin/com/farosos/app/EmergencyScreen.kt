@@ -71,10 +71,6 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
                 LogScreen(
                     entries = viewModel.logEntries,
                     networkRole = viewModel.networkRole,
-                    onConnectivityDetected = viewModel::simulateConnectivityDetected,
-                    onNothingPendingToSync = viewModel::simulateNothingPendingToSync,
-                    onLowBattery = viewModel::simulateLowBattery,
-                    onBatteryRecovered = viewModel::simulateBatteryRecovered,
                     modifier = Modifier.padding(padding)
                 )
             }

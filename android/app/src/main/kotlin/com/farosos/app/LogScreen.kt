@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,19 +22,15 @@ import java.util.Locale
 /**
  * Log en pantalla de las transiciones de la Máquina de estados A y de los
  * eventos de red BLE (emitido/recibido/descartado por duplicado, ticket
- * #7), más — desde el ticket #14 — de la Máquina B (rol de red). Ninguna de
- * las dos tiene BLE/batería reales todavía: el panel "Red" dispara las
- * señales de la Máquina B a mano, igual que "SIMULAR TERREMOTO" dispara la
- * Máquina A. Mecanismo principal de verificación en campo.
+ * #7), más — desde el ticket #14 — de la Máquina B (rol de red), poblada
+ * solo por señales reales del sistema (`BatteryMonitor`/
+ * `ConnectivityMonitor`/`RelayQueue`, tickets #21/#25). Mecanismo principal
+ * de verificación en campo.
  */
 @Composable
 fun LogScreen(
     entries: List<LogEntry>,
     networkRole: NetworkRole,
-    onConnectivityDetected: () -> Unit,
-    onNothingPendingToSync: () -> Unit,
-    onLowBattery: () -> Unit,
-    onBatteryRecovered: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
@@ -43,10 +38,6 @@ fun LogScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Red (Máquina B) — ${networkRole.name}", fontWeight = FontWeight.Bold)
-                Button(onClick = onConnectivityDetected) { Text("Conectividad detectada") }
-                Button(onClick = onNothingPendingToSync) { Text("Nada pendiente de sincronizar") }
-                Button(onClick = onLowBattery) { Text("Simular batería < 15%") }
-                Button(onClick = onBatteryRecovered) { Text("Simular batería > 25% / cargando") }
             }
             HorizontalDivider(modifier = Modifier.padding(top = 16.dp))
         }

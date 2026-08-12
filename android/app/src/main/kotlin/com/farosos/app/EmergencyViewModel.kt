@@ -87,19 +87,13 @@ class EmergencyViewModel @JvmOverloads constructor(
     fun confirmOk() = machine.confirmOk()
     fun requestHelp() = machine.requestHelp()
 
-    // --- Máquina B (rol de red, tickets #14/#17/#21) ---
+    // --- Máquina B (rol de red, tickets #14/#17/#21/#25) ---
     //
     // Batería y conectividad llegan de `BatteryMonitor`/`ConnectivityMonitor`
     // (señales reales del sistema, ver `wireNetworkMonitors`) y "pendiente
     // de sincronizar" llega de `relayQueue.onForeignQueuePendingChanged`
-    // (tickets #18/#19). Estos disparadores manuales quedan como respaldo
-    // para el panel "Red" de `LogScreen` — inofensivos porque cada uno pasa
-    // por el mismo guard de `NetworkRoleMachine` que su contraparte real.
-
-    fun simulateConnectivityDetected() = networkMachine.connectivityDetected()
-    fun simulateNothingPendingToSync() = networkMachine.nothingPendingToSync()
-    fun simulateLowBattery() = networkMachine.updateBattery(percent = 10, isCharging = false)
-    fun simulateBatteryRecovered() = networkMachine.updateBattery(percent = 30, isCharging = false)
+    // (tickets #18/#19). Sin disparadores manuales — #23 verificó en
+    // hardware que las señales reales bastan.
 
     /**
      * Traduce las señales reales del sistema operativo a la Máquina B, y
