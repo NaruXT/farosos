@@ -24,7 +24,7 @@
 
 /* Begin PBXFileReference section */
 		1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmergencyView.swift; sourceTree = "<group>"; };
-		2B07047A9350FF389270ADB4 /* Farosos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Farosos.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B07047A9350FF389270ADB4 /* EmergencyApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EmergencyApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DE73C3625A095134B1280AD /* FarososApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FarososApp.swift; sourceTree = "<group>"; };
 		61E4A356C73D0458CC4F927E /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceIdentity.swift; sourceTree = "<group>"; };
@@ -78,7 +78,7 @@
 		96B0F45F67B5880698713AFB /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2B07047A9350FF389270ADB4 /* Farosos.app */,
+				2B07047A9350FF389270ADB4 /* EmergencyApp.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -114,7 +114,7 @@
 				68B709E68892D544A7EF3D35 /* BeaconRadio */,
 			);
 			productName = EmergencyApp;
-			productReference = 2B07047A9350FF389270ADB4 /* Farosos.app */;
+			productReference = 2B07047A9350FF389270ADB4 /* EmergencyApp.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -124,7 +124,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = 3E7DDF40C92E56186D8DC499 /* Build configuration list for PBXProject "Farosos" */;
 			developmentRegion = en;
@@ -226,10 +228,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 6W2BCB3L3T;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -291,10 +291,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 6W2BCB3L3T;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
