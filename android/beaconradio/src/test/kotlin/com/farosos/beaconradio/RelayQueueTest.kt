@@ -360,4 +360,109 @@ class RelayQueueTest {
 
         assertEquals(listOf(own, foreignB, foreignC, own), observed)
     }
+
+    // --- Señal de cola de ajenos vacía↔no-vacía (ticket #19) ---
+
+    @Test
+    fun foreignQueuePendingChangedFiresTrueOnFirstForeignBeacon() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+        val foreign = packet(deviceByte = 2, nonce = 1)
+
+        queue.enqueueForeignBeacon(foreign)
+
+        assertEquals(listOf(true), observed)
+    }
+
+    @Test
+    fun foreignQueuePendingChangedNotFiredOnSubsequentEnqueueWhileNonEmpty() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        val foreignA = packet(deviceByte = 2, nonce = 1)
+        val foreignB = packet(deviceByte = 3, nonce = 1)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+
+        queue.enqueueForeignBeacon(foreignB)
+
+        assertEquals(emptyList(), observed)
+    }
+
+    @Test
+    fun foreignQueuePendingChangedNotFiredWhenReplacingSameKey() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        val firstSeen = packet(deviceByte = 2, nonce = 1, ttl = 10)
+        val sameKeyAgain = packet(deviceByte = 2, nonce = 1, ttl = 3)
+        queue.enqueueForeignBeacon(firstSeen)
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+
+        queue.enqueueForeignBeacon(sameKeyAgain)
+
+        assertEquals(emptyList(), observed, "reemplazar la misma clave no cambia el estado vacío/no-vacío")
+    }
+
+    @Test
+    fun foreignQueuePendingChangedFiresFalseWhenLastForeignBeaconRemoved() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        val foreign = packet(deviceByte = 2, nonce = 1)
+        queue.enqueueForeignBeacon(foreign)
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+
+        queue.removeForeignBeacon(deviceIdHash = foreign.deviceIdHash, nonce = foreign.nonce)
+
+        assertEquals(listOf(false), observed)
+    }
+
+    @Test
+    fun foreignQueuePendingChangedNotFiredWhenRemovingWithOthersStillPending() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        val foreignA = packet(deviceByte = 2, nonce = 1)
+        val foreignB = packet(deviceByte = 3, nonce = 1)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+
+        queue.removeForeignBeacon(deviceIdHash = foreignA.deviceIdHash, nonce = foreignA.nonce)
+
+        assertEquals(emptyList(), observed)
+    }
+
+    @Test
+    fun removeForeignBeaconIsNoOpForUnknownKey() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler)
+        val observed = mutableListOf<Boolean>()
+        queue.onForeignQueuePendingChanged = { observed.add(it) }
+
+        queue.removeForeignBeacon(deviceIdHash = byteArrayOf(9, 9, 9, 9, 9, 9), nonce = 99)
+
+        assertEquals(emptyList(), observed)
+    }
+
+    @Test
+    fun removeForeignBeaconRemovesItFromRotation() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val foreign = packet(deviceByte = 2, nonce = 1)
+
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreign)
+        queue.removeForeignBeacon(deviceIdHash = foreign.deviceIdHash, nonce = foreign.nonce)
+        queue.start()
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, own), observed, "sin beacons ajenos, la rotación solo tiene al propio beacon")
+    }
 }

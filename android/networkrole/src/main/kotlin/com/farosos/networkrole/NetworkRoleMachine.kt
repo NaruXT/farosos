@@ -48,6 +48,17 @@ class NetworkRoleMachine {
     }
 
     /**
+     * Volvió a quedar algo pendiente (p. ej. llegó un beacon ajeno nuevo)
+     * mientras el teléfono estaba tranquilo en `SINCRONIZADO_IDLE` — único
+     * camino de vuelta a `GATEWAY_ACTIVO`, sin el cual la máquina se
+     * quedaba atascada ignorando información nueva.
+     */
+    fun somethingPendingToSync() {
+        if (state != NetworkRole.SINCRONIZADO_IDLE) return
+        transition(NetworkRole.GATEWAY_ACTIVO)
+    }
+
+    /**
      * Se llama con cada lectura de batería. Si ya está en `BAJO_CONSUMO`,
      * solo evalúa la condición de recuperación (batería > 25% O cargando —
      * cargando recupera sin importar el porcentaje, por eso se revisa antes

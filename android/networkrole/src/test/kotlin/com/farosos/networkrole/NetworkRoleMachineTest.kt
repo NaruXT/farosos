@@ -71,6 +71,28 @@ class NetworkRoleMachineTest {
     }
 
     @Test
+    fun somethingPendingTransitionsFromSincronizadoIdleToGatewayActivo() {
+        val machine = NetworkRoleMachine()
+        machine.appActivated()
+        machine.connectivityDetected()
+        machine.nothingPendingToSync()
+
+        machine.somethingPendingToSync()
+
+        assertEquals(NetworkRole.GATEWAY_ACTIVO, machine.state)
+    }
+
+    @Test
+    fun somethingPendingIgnoredOutsideSincronizadoIdle() {
+        val machine = NetworkRoleMachine()
+        machine.appActivated()
+
+        machine.somethingPendingToSync() // en soloRetransmite, debe ser no-op
+
+        assertEquals(NetworkRole.SOLO_RETRANSMITE, machine.state)
+    }
+
+    @Test
     fun lowBatteryTransitionsToBajoConsumoFromSoloRetransmite() {
         val machine = NetworkRoleMachine()
         machine.appActivated()
