@@ -66,6 +66,8 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val advertiser = BleAdvertiser(application)
     private val scanner = BleScanner(application)
     private val relayQueue = RelayQueue(scheduler)
+    private val batteryMonitor = BatteryMonitor(application)
+    private val connectivityMonitor = ConnectivityMonitor(application)
     private var radioStarted = false
     private var isForeground = false
 
@@ -74,6 +76,7 @@ class EmergencyViewModel @JvmOverloads constructor(
         machine.onTransition = { newState -> handleTransition(newState) }
 
         networkMachine.onTransition = { newRole -> handleNetworkRoleTransition(newRole) }
+        wireNetworkMonitors()
         // La app está en primer plano desde que se crea este view model — la
         // Máquina B no requiere confirmación explícita del usuario para
         // salir de APAGADO, a diferencia de la Máquina A.
@@ -84,20 +87,71 @@ class EmergencyViewModel @JvmOverloads constructor(
     fun confirmOk() = machine.confirmOk()
     fun requestHelp() = machine.requestHelp()
 
-    // --- Máquina B (rol de red, ticket #14) ---
+    // --- Máquina B (rol de red, tickets #14/#17/#21) ---
     //
-    // Sin BLE ni batería/conectividad reales todavía — estas señales se
-    // disparan a mano desde el panel "Red" de `LogScreen`, igual que
-    // "SIMULAR TERREMOTO" dispara la Máquina A sin un sismo real.
+    // Batería y conectividad llegan de `BatteryMonitor`/`ConnectivityMonitor`
+    // (señales reales del sistema, ver `wireNetworkMonitors`) y "pendiente
+    // de sincronizar" llega de `relayQueue.onForeignQueuePendingChanged`
+    // (tickets #18/#19). Estos disparadores manuales quedan como respaldo
+    // para el panel "Red" de `LogScreen` — inofensivos porque cada uno pasa
+    // por el mismo guard de `NetworkRoleMachine` que su contraparte real.
 
     fun simulateConnectivityDetected() = networkMachine.connectivityDetected()
     fun simulateNothingPendingToSync() = networkMachine.nothingPendingToSync()
     fun simulateLowBattery() = networkMachine.updateBattery(percent = 10, isCharging = false)
     fun simulateBatteryRecovered() = networkMachine.updateBattery(percent = 30, isCharging = false)
 
+    /**
+     * Traduce las señales reales del sistema operativo a la Máquina B, y
+     * las transiciones de la Máquina B de vuelta a `RelayQueue` (ticket
+     * #17/#21): `BAJO_CONSUMO` activa la prioridad de descarte, y
+     * `GATEWAY_ACTIVO` arma/retira el anuncio de gateway.
+     */
+    private fun wireNetworkMonitors() {
+        batteryMonitor.onBatteryChanged = onMain { reading ->
+            networkMachine.updateBattery(percent = reading.percent, isCharging = reading.isCharging)
+        }
+        connectivityMonitor.onConnectivityChanged = onMain { hasConnectivity ->
+            if (hasConnectivity) networkMachine.connectivityDetected()
+        }
+        // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
+        // looper) que la Máquina A, así que este callback ya llega en el
+        // hilo principal — no hace falta pasar por `onMain`.
+        relayQueue.onForeignQueuePendingChanged = { isPending ->
+            if (isPending) networkMachine.somethingPendingToSync() else networkMachine.nothingPendingToSync()
+        }
+        batteryMonitor.start()
+        connectivityMonitor.start()
+    }
+
     private fun handleNetworkRoleTransition(newRole: NetworkRole) {
         networkRole = newRole
         appendLogEntry(LogEntry.Kind.NetworkRoleTransition(newRole))
+        relayQueue.isLowPower = newRole == NetworkRole.BAJO_CONSUMO
+        if (newRole == NetworkRole.GATEWAY_ACTIVO) {
+            refreshGatewayAnnouncement()
+        } else {
+            relayQueue.clearGatewayAnnouncement()
+        }
+    }
+
+    /**
+     * Arma el anuncio de gateway a partir del estado actual y lo pone en su
+     * slot fijo en `relayQueue`. Se auto-registra en la propia caché de
+     * dedup al emitirlo (decisión 12, igual que `refreshAdvertisedBeacon`):
+     * si este anuncio rebota de un vecino, se descarta como duplicado por
+     * el mismo camino que cualquier otro paquete, en vez de colarse en las
+     * entradas ajenas como si fuera de otro nodo.
+     */
+    private fun refreshGatewayAnnouncement() {
+        val packet = LocalBeaconFactory.makeGatewayAnnouncement(
+            deviceIdHash = deviceIdHash,
+            sequence = machine.sequence,
+            nowEpochSeconds = System.currentTimeMillis() / 1000,
+            nonceGenerator = nonceGenerator
+        )
+        dedupCache.insertIfAbsent(DedupCache.Key(packet.deviceIdHash, packet.nonce))
+        relayQueue.updateGatewayAnnouncement(packet)
     }
 
     /**
@@ -172,8 +226,10 @@ class EmergencyViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Reenvía un callback de `BleAdvertiser`/`BleScanner` (que llega en un
-     * hilo de Binder, no necesariamente el principal) de vuelta al hilo
+     * Reenvía un callback de un envoltorio de framework (`BleAdvertiser`,
+     * `BleScanner`, `BatteryMonitor`, `ConnectivityMonitor`; no todos
+     * garantizan llegar en el hilo principal — p. ej. `NetworkCallback` de
+     * `ConnectivityMonitor` llega en un hilo de Binder) de vuelta al hilo
      * principal — Compose solo debe mutar estado ahí.
      */
     private fun <Value> onMain(work: (Value) -> Unit): (Value) -> Unit =
@@ -257,6 +313,8 @@ class EmergencyViewModel @JvmOverloads constructor(
     override fun onCleared() {
         stopCountdown()
         onAppBackgrounded()
+        batteryMonitor.stop()
+        connectivityMonitor.stop()
         super.onCleared()
     }
 }

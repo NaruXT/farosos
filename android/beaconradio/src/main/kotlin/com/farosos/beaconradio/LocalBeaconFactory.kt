@@ -34,4 +34,26 @@ object LocalBeaconFactory {
         nonce = nonceGenerator.nextNonce(),
         sequence = sequence
     )
+
+    /**
+     * Construye el anuncio de gateway (`GATEWAY_ANNOUNCE`/`GATEWAY_DISPONIBLE`)
+     * que este nodo emite mientras la Máquina B esté en `GATEWAY_ACTIVO`
+     * (ticket #17/#21).
+     */
+    fun makeGatewayAnnouncement(
+        deviceIdHash: ByteArray,
+        sequence: Int,
+        nowEpochSeconds: Long,
+        nonceGenerator: NonceGenerating
+    ): BeaconPacket = BeaconPacket(
+        messageType = BeaconPacket.MessageType.GATEWAY_ANNOUNCE,
+        deviceIdHash = deviceIdHash,
+        status = BeaconPacket.Status.GATEWAY_DISPONIBLE,
+        latitudeE7 = 0,
+        longitudeE7 = 0,
+        timestamp = nowEpochSeconds,
+        ttl = INITIAL_TTL,
+        nonce = nonceGenerator.nextNonce(),
+        sequence = sequence
+    )
 }

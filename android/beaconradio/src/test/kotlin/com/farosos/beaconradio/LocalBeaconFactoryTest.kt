@@ -44,4 +44,24 @@ class LocalBeaconFactoryTest {
 
         assertNotEquals(first.nonce, second.nonce)
     }
+
+    @Test
+    fun makeGatewayAnnouncementFillsFieldsFromInputs() {
+        val deviceIdHash = byteArrayOf(9, 8, 7, 6, 5, 4)
+
+        val packet = LocalBeaconFactory.makeGatewayAnnouncement(
+            deviceIdHash = deviceIdHash,
+            sequence = 5,
+            nowEpochSeconds = 1_700_000_000L,
+            nonceGenerator = FixedNonceGenerator(0x1234)
+        )
+
+        assertEquals(BeaconPacket.MessageType.GATEWAY_ANNOUNCE, packet.messageType)
+        assertEquals(deviceIdHash, packet.deviceIdHash)
+        assertEquals(BeaconPacket.Status.GATEWAY_DISPONIBLE, packet.status)
+        assertEquals(5, packet.sequence)
+        assertEquals(1_700_000_000L, packet.timestamp)
+        assertEquals(0x1234, packet.nonce)
+        assertEquals(LocalBeaconFactory.INITIAL_TTL, packet.ttl)
+    }
 }

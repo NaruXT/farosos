@@ -17,6 +17,10 @@
          cualquier conexión GATT lanza SecurityException en API 31+. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- Requerido por `ConnectivityManager.registerNetworkCallback`
+         (ticket #17/#21, detección de conectividad real de la Máquina B). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
