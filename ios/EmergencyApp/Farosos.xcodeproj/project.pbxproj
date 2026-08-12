@@ -7,8 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02E646B9E157D30DEFCAB196 /* BeaconRadio in Frameworks */ = {isa = PBXBuildFile; productRef = 68B709E68892D544A7EF3D35 /* BeaconRadio */; };
 		21FB2D2DF45C03497B722387 /* BleAdvertiser.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA856BD18A81DA5D60151BFE /* BleAdvertiser.swift */; };
-		5511ABC698D599BE6D46F124 /* BeaconRadio in Frameworks */ = {isa = PBXBuildFile; productRef = 68B709E68892D544A7EF3D35 /* BeaconRadio */; };
+		2BADDD6F4E46405A899EFF1E /* BatteryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */; };
+		4BB6191648EE70638957B667 /* ConnectivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */; };
+		5511ABC698D599BE6D46F124 /* PacketCodec in Frameworks */ = {isa = PBXBuildFile; productRef = E48ECC07058987F9E4955283 /* PacketCodec */; };
 		5B3AE2B40F38915E10457909 /* EmergencyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */; };
 		5D4ED6485B7956361079D49B /* KeychainDeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */; };
 		6881141ABB99E0209E7DE563 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72092A59D9E46295D71020D /* LogView.swift */; };
@@ -16,9 +19,8 @@
 		A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE73C3625A095134B1280AD /* FarososApp.swift */; };
 		CD57315974048A5D59D62B66 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E4A356C73D0458CC4F927E /* LogEntry.swift */; };
 		DAA16E95FDC2A9E28E83BC3A /* BleScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741C4A524E7E1ED47C35CD5D /* BleScanner.swift */; };
-		0BA0E72820E8DD0A9AF108CB /* NetworkRoleMachine in Frameworks */ = {isa = PBXBuildFile; productRef = E348AD3E022984CD39613FE6 /* NetworkRoleMachine */; };
 		E1A9F71F4D1AA37B42A1A3B1 /* PersonStateMachine in Frameworks */ = {isa = PBXBuildFile; productRef = 96A23994D47BA482BA4A19E7 /* PersonStateMachine */; };
-		EB3D64FF0EBD4B06F66E9EA3 /* PacketCodec in Frameworks */ = {isa = PBXBuildFile; productRef = E48ECC07058987F9E4955283 /* PacketCodec */; };
+		EB3D64FF0EBD4B06F66E9EA3 /* NetworkRoleMachine in Frameworks */ = {isa = PBXBuildFile; productRef = F8965C1806216DADB852DA1A /* NetworkRoleMachine */; };
 		FAC4273AD5378C3FBC8CCD1E /* RealScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D148061E314F0B683720C25B /* RealScheduler.swift */; };
 /* End PBXBuildFile section */
 
@@ -28,7 +30,9 @@
 		5DE73C3625A095134B1280AD /* FarososApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FarososApp.swift; sourceTree = "<group>"; };
 		61E4A356C73D0458CC4F927E /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceIdentity.swift; sourceTree = "<group>"; };
+		6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
 		741C4A524E7E1ED47C35CD5D /* BleScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleScanner.swift; sourceTree = "<group>"; };
+		887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryMonitor.swift; sourceTree = "<group>"; };
 		9778EA3E566CA704C1D35319 /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = ..; sourceTree = SOURCE_ROOT; };
 		B72092A59D9E46295D71020D /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 		D148061E314F0B683720C25B /* RealScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealScheduler.swift; sourceTree = "<group>"; };
@@ -42,9 +46,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				E1A9F71F4D1AA37B42A1A3B1 /* PersonStateMachine in Frameworks */,
-				0BA0E72820E8DD0A9AF108CB /* NetworkRoleMachine in Frameworks */,
-				EB3D64FF0EBD4B06F66E9EA3 /* PacketCodec in Frameworks */,
-				5511ABC698D599BE6D46F124 /* BeaconRadio in Frameworks */,
+				EB3D64FF0EBD4B06F66E9EA3 /* NetworkRoleMachine in Frameworks */,
+				5511ABC698D599BE6D46F124 /* PacketCodec in Frameworks */,
+				02E646B9E157D30DEFCAB196 /* BeaconRadio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,8 +58,10 @@
 		11B7F536266C1F9CC9D73924 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */,
 				EA856BD18A81DA5D60151BFE /* BleAdvertiser.swift */,
 				741C4A524E7E1ED47C35CD5D /* BleScanner.swift */,
+				6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */,
 				1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */,
 				E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */,
 				5DE73C3625A095134B1280AD /* FarososApp.swift */,
@@ -109,7 +115,7 @@
 			name = EmergencyApp;
 			packageProductDependencies = (
 				96A23994D47BA482BA4A19E7 /* PersonStateMachine */,
-				E348AD3E022984CD39613FE6 /* NetworkRoleMachine */,
+				F8965C1806216DADB852DA1A /* NetworkRoleMachine */,
 				E48ECC07058987F9E4955283 /* PacketCodec */,
 				68B709E68892D544A7EF3D35 /* BeaconRadio */,
 			);
@@ -155,8 +161,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2BADDD6F4E46405A899EFF1E /* BatteryMonitor.swift in Sources */,
 				21FB2D2DF45C03497B722387 /* BleAdvertiser.swift in Sources */,
 				DAA16E95FDC2A9E28E83BC3A /* BleScanner.swift in Sources */,
+				4BB6191648EE70638957B667 /* ConnectivityMonitor.swift in Sources */,
 				5B3AE2B40F38915E10457909 /* EmergencyView.swift in Sources */,
 				997968B4BC1608E98F72A746 /* EmergencyViewModel.swift in Sources */,
 				A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */,
@@ -374,13 +382,13 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = PersonStateMachine;
 		};
-		E348AD3E022984CD39613FE6 /* NetworkRoleMachine */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = NetworkRoleMachine;
-		};
 		E48ECC07058987F9E4955283 /* PacketCodec */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PacketCodec;
+		};
+		F8965C1806216DADB852DA1A /* NetworkRoleMachine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NetworkRoleMachine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

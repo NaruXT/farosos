@@ -16,6 +16,8 @@ targets:
       - package: Farosos
         product: PersonStateMachine
       - package: Farosos
+        product: NetworkRoleMachine
+      - package: Farosos
         product: PacketCodec
       - package: Farosos
         product: BeaconRadio

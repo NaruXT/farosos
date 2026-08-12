@@ -47,4 +47,24 @@ final class LocalBeaconFactoryTests: XCTestCase {
 
         XCTAssertNotEqual(first.nonce, second.nonce)
     }
+
+    func testMakeGatewayAnnouncementFillsFieldsFromInputs() {
+        let deviceIdHash = Data([9, 8, 7, 6, 5, 4])
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let packet = LocalBeaconFactory.makeGatewayAnnouncement(
+            deviceIdHash: deviceIdHash,
+            sequence: 5,
+            now: now,
+            nonceGenerator: FixedNonceGenerator(value: 0x1234)
+        )
+
+        XCTAssertEqual(packet.messageType, .gatewayAnnounce)
+        XCTAssertEqual(packet.deviceIdHash, deviceIdHash)
+        XCTAssertEqual(packet.status, .gatewayDisponible)
+        XCTAssertEqual(packet.sequence, 5)
+        XCTAssertEqual(packet.timestamp, 1_700_000_000)
+        XCTAssertEqual(packet.nonce, 0x1234)
+        XCTAssertEqual(packet.ttl, LocalBeaconFactory.initialTtl)
+    }
 }

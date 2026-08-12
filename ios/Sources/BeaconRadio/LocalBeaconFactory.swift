@@ -42,4 +42,26 @@ public enum LocalBeaconFactory {
             sequence: sequence
         )
     }
+
+    /// Construye el anuncio de gateway (`GATEWAY_ANNOUNCE`/`GATEWAY_DISPONIBLE`)
+    /// que este nodo emite mientras la Máquina B esté en `GATEWAY_ACTIVO`
+    /// (ticket #17/#20).
+    public static func makeGatewayAnnouncement(
+        deviceIdHash: Data,
+        sequence: UInt8,
+        now: Date,
+        nonceGenerator: NonceGenerating
+    ) -> BeaconPacket {
+        BeaconPacket(
+            messageType: .gatewayAnnounce,
+            deviceIdHash: deviceIdHash,
+            status: .gatewayDisponible,
+            latitudeE7: 0,
+            longitudeE7: 0,
+            timestamp: UInt32(now.timeIntervalSince1970),
+            ttl: initialTtl,
+            nonce: nonceGenerator.nextNonce(),
+            sequence: sequence
+        )
+    }
 }

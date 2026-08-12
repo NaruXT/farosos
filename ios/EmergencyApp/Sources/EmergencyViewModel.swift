@@ -45,6 +45,8 @@ final class EmergencyViewModel: ObservableObject {
     private let advertiser = BleAdvertiser()
     private let scanner = BleScanner()
     private let relayQueue: RelayQueue
+    private let batteryMonitor = BatteryMonitor()
+    private let connectivityMonitor = ConnectivityMonitor()
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -71,6 +73,7 @@ final class EmergencyViewModel: ObservableObject {
         networkMachine.onTransition = { [weak self] newRole in
             self?.handleNetworkRoleTransition(to: newRole)
         }
+        wireNetworkMonitors()
         // La app está en primer plano desde que se crea este view model — la
         // Máquina B no requiere confirmación explícita del usuario para
         // salir de `APAGADO`, a diferencia de la Máquina A.
@@ -81,20 +84,72 @@ final class EmergencyViewModel: ObservableObject {
     func confirmOk() { machine.confirmOk() }
     func requestHelp() { machine.requestHelp() }
 
-    // MARK: - Máquina B (rol de red, ticket #13)
+    // MARK: - Máquina B (rol de red, tickets #13/#17/#20)
     //
-    // Sin BLE ni batería/conectividad reales todavía — estas señales se
-    // disparan a mano desde el panel "Red" de `LogView`, igual que
-    // "SIMULAR TERREMOTO" dispara la Máquina A sin un sismo real.
+    // Batería y conectividad llegan de `BatteryMonitor`/`ConnectivityMonitor`
+    // (señales reales del sistema, ver `wireNetworkMonitors`) y "pendiente
+    // de sincronizar" llega de `relayQueue.onForeignQueuePendingChanged`
+    // (tickets #18/#19). Estos disparadores manuales quedan como respaldo
+    // para el panel "Red" de `LogView` — inofensivos porque cada uno pasa
+    // por el mismo guard de `NetworkRoleMachine` que su contraparte real.
 
     func simulateConnectivityDetected() { networkMachine.connectivityDetected() }
     func simulateNothingPendingToSync() { networkMachine.nothingPendingToSync() }
     func simulateLowBattery() { networkMachine.updateBattery(percent: 10, isCharging: false) }
     func simulateBatteryRecovered() { networkMachine.updateBattery(percent: 30, isCharging: false) }
 
+    /// Traduce las señales reales del sistema operativo a la Máquina B, y
+    /// las transiciones de la Máquina B de vuelta a `RelayQueue` (ticket
+    /// #17/#20): `BAJO_CONSUMO` activa la prioridad de descarte, y
+    /// `GATEWAY_ACTIVO` arma/retira el anuncio de gateway.
+    private func wireNetworkMonitors() {
+        batteryMonitor.onBatteryChanged = onMain { viewModel, reading in
+            viewModel.networkMachine.updateBattery(percent: reading.percent, isCharging: reading.isCharging)
+        }
+        connectivityMonitor.onConnectivityChanged = onMain { viewModel, hasConnectivity in
+            guard hasConnectivity else { return }
+            viewModel.networkMachine.connectivityDetected()
+        }
+        // `RelayQueue` ya despacha en el hilo principal (ver `wireRadio`),
+        // así que esto no necesita pasar por `onMain`.
+        relayQueue.onForeignQueuePendingChanged = { [weak self] isPending in
+            guard let self else { return }
+            if isPending {
+                self.networkMachine.somethingPendingToSync()
+            } else {
+                self.networkMachine.nothingPendingToSync()
+            }
+        }
+        batteryMonitor.start()
+        connectivityMonitor.start()
+    }
+
     private func handleNetworkRoleTransition(to newRole: NetworkRole) {
         networkRole = newRole
         appendLogEntry(.networkRoleTransition(role: newRole))
+        relayQueue.isLowPower = (newRole == .bajoConsumo)
+        if newRole == .gatewayActivo {
+            refreshGatewayAnnouncement()
+        } else {
+            relayQueue.clearGatewayAnnouncement()
+        }
+    }
+
+    /// Arma el anuncio de gateway a partir del estado actual y lo pone en
+    /// su slot fijo en `RelayQueue`. Se auto-registra en la propia caché de
+    /// dedup al emitirlo (decisión 12, igual que `refreshAdvertisedBeacon`):
+    /// si este anuncio rebota de un vecino, se descarta como duplicado por
+    /// el mismo camino que cualquier otro paquete, en vez de colarse en
+    /// `foreignEntries` como si fuera ajeno.
+    private func refreshGatewayAnnouncement() {
+        let packet = LocalBeaconFactory.makeGatewayAnnouncement(
+            deviceIdHash: deviceIdHash,
+            sequence: machine.sequence,
+            now: Date(),
+            nonceGenerator: nonceGenerator
+        )
+        dedupCache.insertIfAbsent(DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
+        relayQueue.updateGatewayAnnouncement(packet)
     }
 
     private func handleTransition(to newState: PersonState) {
@@ -140,7 +195,8 @@ final class EmergencyViewModel: ObservableObject {
         scanner.start()
     }
 
-    /// Reenvía un callback de `BleAdvertiser`/`BleScanner` (que puede llegar
+    /// Reenvía un callback de un envoltorio de framework (`BleAdvertiser`,
+    /// `BleScanner`, `BatteryMonitor`, `ConnectivityMonitor`; puede llegar
     /// desde cualquier hilo) de vuelta al `MainActor`, sin repetir el mismo
     /// `[weak self] in Task { @MainActor in ... }` en cada call site.
     private func onMain<Value>(_ work: @escaping (EmergencyViewModel, Value) -> Void) -> (Value) -> Void {
