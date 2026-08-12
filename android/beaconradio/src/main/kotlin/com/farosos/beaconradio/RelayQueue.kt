@@ -7,23 +7,32 @@ import com.farosos.personstate.SchedulerToken
 /**
  * Cola de retransmisión round-robin (AC del ticket #9, `spec/packet-format.md`):
  * el propio beacon más los beacons ajenos pendientes de relay rotan con
- * una ventana fija. Sin priorización por estado en esta fase — todas las
- * entradas tienen el mismo turno.
+ * una ventana fija.
+ *
+ * El propio beacon siempre está presente (se reemplaza en el lugar en cada
+ * transición); el anuncio de gateway (Máquina B, `GATEWAY_ACTIVO`, ticket
+ * #16) ocupa un segundo slot fijo con el mismo trato — presente solo
+ * mientras se llame `updateGatewayAnnouncement`, nunca desalojado. Los
+ * beacons ajenos tienen un tope: LRU simple normalmente, o la prioridad de
+ * `BAJO_CONSUMO` cuando `isLowPower` está activo (ticket #16).
  */
 class RelayQueue(
     private val scheduler: Scheduler,
     private val window: Double = 1.0,
     private val foreignCapacity: Int = 20
 ) {
-    private class Entry(val packet: BeaconPacket, val isOwnBeacon: Boolean)
+    private enum class Slot { OWN, GATEWAY, FOREIGN }
+
+    private class Entry(val packet: BeaconPacket, val slot: Slot)
 
     /**
      * Identifica una entrada por su contenido lógico, no por su posición en
      * la lista — una posición cruda se desincroniza en cuanto el desalojo
-     * LRU cambia el tamaño de `foreignEntries` entre rotaciones.
+     * cambia el tamaño de `foreignEntries` entre rotaciones.
      */
     private sealed class EntryKey {
         object Own : EntryKey()
+        object Gateway : EntryKey()
         class Foreign(val deviceIdHash: ByteArray, val nonce: Int) : EntryKey() {
             override fun equals(other: Any?): Boolean =
                 other is Foreign && deviceIdHash.contentEquals(other.deviceIdHash) && nonce == other.nonce
@@ -34,14 +43,40 @@ class RelayQueue(
 
     var onCurrentPacketChanged: ((BeaconPacket) -> Unit)? = null
 
+    /**
+     * Señal simple inyectada por quien gobierne la Máquina B — esta clase
+     * no depende de `NetworkRoleMachine` directamente. `false` (normal):
+     * desalojo LRU puro, igual que Fase 1. `true` (`BAJO_CONSUMO`): un `OK`
+     * se descarta primero; si no hay ninguno, no se desaloja nada —
+     * `SIN_CONFIRMAR`/`AYUDA`/`SILENCIO_TIMEOUT` nunca se pierden antes que
+     * un `OK`, aunque la cola quede momentáneamente sobre su tope.
+     */
+    var isLowPower: Boolean = false
+
     private var ownEntry: Entry? = null
+    private var gatewayEntry: Entry? = null
     private val foreignEntries = mutableListOf<Entry>() // más antigua al frente
     private var lastShownKey: EntryKey? = null
     private var rotationToken: SchedulerToken? = null
 
     /** Reemplaza el propio beacon en su lugar en la cola — nunca se desaloja. */
     fun updateOwnBeacon(packet: BeaconPacket) {
-        ownEntry = Entry(packet, isOwnBeacon = true)
+        ownEntry = Entry(packet, slot = Slot.OWN)
+    }
+
+    /**
+     * Ocupa el slot fijo de anuncio de gateway — mismo trato que el beacon
+     * propio: nunca se desaloja, se reemplaza en su lugar en cada
+     * actualización. Solo tiene sentido llamarlo mientras el nodo está en
+     * `GATEWAY_ACTIVO`.
+     */
+    fun updateGatewayAnnouncement(packet: BeaconPacket) {
+        gatewayEntry = Entry(packet, slot = Slot.GATEWAY)
+    }
+
+    /** Libera el slot de gateway — se llama al salir de `GATEWAY_ACTIVO`. */
+    fun clearGatewayAnnouncement() {
+        gatewayEntry = null
     }
 
     /**
@@ -53,9 +88,22 @@ class RelayQueue(
         foreignEntries.removeAll {
             it.packet.deviceIdHash.contentEquals(packet.deviceIdHash) && it.packet.nonce == packet.nonce
         }
-        foreignEntries.add(Entry(packet, isOwnBeacon = false))
-        if (foreignEntries.size > foreignCapacity) {
+        foreignEntries.add(Entry(packet, slot = Slot.FOREIGN))
+        evictIfNeeded()
+    }
+
+    private fun evictIfNeeded() {
+        if (foreignEntries.size <= foreignCapacity) return
+        if (!isLowPower) {
             foreignEntries.removeAt(0)
+            return
+        }
+        // El OK más antiguo se descarta primero; si no hay ninguno, no se
+        // desaloja nada — proteger lo urgente importa más que respetar el
+        // tope exacto.
+        val oldestOkIndex = foreignEntries.indexOfFirst { it.packet.status == BeaconPacket.Status.OK }
+        if (oldestOkIndex >= 0) {
+            foreignEntries.removeAt(oldestOkIndex)
         }
     }
 
@@ -70,10 +118,13 @@ class RelayQueue(
         rotationToken = null
     }
 
-    private fun allEntries(): List<Entry> = listOfNotNull(ownEntry) + foreignEntries
+    private fun allEntries(): List<Entry> = listOfNotNull(ownEntry, gatewayEntry) + foreignEntries
 
-    private fun key(entry: Entry): EntryKey =
-        if (entry.isOwnBeacon) EntryKey.Own else EntryKey.Foreign(entry.packet.deviceIdHash, entry.packet.nonce)
+    private fun key(entry: Entry): EntryKey = when (entry.slot) {
+        Slot.OWN -> EntryKey.Own
+        Slot.GATEWAY -> EntryKey.Gateway
+        Slot.FOREIGN -> EntryKey.Foreign(entry.packet.deviceIdHash, entry.packet.nonce)
+    }
 
     private fun scheduleNextRotation() {
         rotationToken = scheduler.schedule(window) { rotate() }

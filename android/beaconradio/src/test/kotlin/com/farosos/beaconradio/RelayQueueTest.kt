@@ -5,14 +5,31 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RelayQueueTest {
-    private fun packet(deviceByte: Int, nonce: Int, ttl: Int = 10): BeaconPacket = BeaconPacket(
+    private fun packet(
+        deviceByte: Int,
+        nonce: Int,
+        ttl: Int = 10,
+        status: BeaconPacket.Status = BeaconPacket.Status.OK
+    ): BeaconPacket = BeaconPacket(
         messageType = BeaconPacket.MessageType.BEACON,
         deviceIdHash = byteArrayOf(deviceByte.toByte(), 0, 0, 0, 0, 0),
-        status = BeaconPacket.Status.OK,
+        status = status,
         latitudeE7 = 0,
         longitudeE7 = 0,
         timestamp = 0,
         ttl = ttl,
+        nonce = nonce,
+        sequence = 1
+    )
+
+    private fun gatewayAnnouncement(deviceByte: Int, nonce: Int): BeaconPacket = BeaconPacket(
+        messageType = BeaconPacket.MessageType.GATEWAY_ANNOUNCE,
+        deviceIdHash = byteArrayOf(deviceByte.toByte(), 0, 0, 0, 0, 0),
+        status = BeaconPacket.Status.GATEWAY_DISPONIBLE,
+        latitudeE7 = 0,
+        longitudeE7 = 0,
+        timestamp = 0,
+        ttl = 10,
         nonce = nonce,
         sequence = 1
     )
@@ -157,5 +174,190 @@ class RelayQueueTest {
         scheduler.advance(10.0)
 
         assertEquals(listOf(own), observed, "tras stop(), no debe seguir rotando")
+    }
+
+    // --- Slot de gateway (ticket #16) ---
+
+    @Test
+    fun gatewayAnnouncementOccupiesFixedSlotAndParticipatesInRotation() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val gateway = gatewayAnnouncement(deviceByte = 9, nonce = 1)
+
+        queue.updateOwnBeacon(own)
+        queue.updateGatewayAnnouncement(gateway)
+        queue.start()
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, gateway), observed)
+    }
+
+    @Test
+    fun gatewayAnnouncementIsReplacedInPlaceNotDuplicated() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val firstAnnouncement = gatewayAnnouncement(deviceByte = 9, nonce = 1)
+        val updatedAnnouncement = gatewayAnnouncement(deviceByte = 9, nonce = 2)
+
+        queue.updateOwnBeacon(own)
+        queue.updateGatewayAnnouncement(firstAnnouncement)
+        queue.updateGatewayAnnouncement(updatedAnnouncement)
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, updatedAnnouncement, own), observed, "un solo slot de gateway, reemplazado en su lugar")
+    }
+
+    @Test
+    fun gatewayAnnouncementNeverEvicted() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0, foreignCapacity = 1)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val gateway = gatewayAnnouncement(deviceByte = 9, nonce = 1)
+        val foreignA = packet(deviceByte = 2, nonce = 1)
+        val foreignB = packet(deviceByte = 3, nonce = 1) // desaloja foreignA (tope=1), nunca al gateway
+
+        queue.updateOwnBeacon(own)
+        queue.updateGatewayAnnouncement(gateway)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, gateway, foreignB), observed)
+    }
+
+    @Test
+    fun clearGatewayAnnouncementRemovesItFromRotation() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val gateway = gatewayAnnouncement(deviceByte = 9, nonce = 1)
+
+        queue.updateOwnBeacon(own)
+        queue.updateGatewayAnnouncement(gateway)
+        queue.clearGatewayAnnouncement()
+        queue.start()
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, own), observed, "sin slot de gateway, la rotación solo tiene al propio beacon")
+    }
+
+    // --- Prioridad de descarte bajo BAJO_CONSUMO (ticket #16) ---
+
+    @Test
+    fun capacityStaysLruWhenNotLowPower() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0, foreignCapacity = 2)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val foreignA = packet(deviceByte = 2, nonce = 1, status = BeaconPacket.Status.AYUDA)
+        val foreignB = packet(deviceByte = 3, nonce = 1, status = BeaconPacket.Status.OK)
+        val foreignC = packet(deviceByte = 4, nonce = 1, status = BeaconPacket.Status.OK)
+
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.enqueueForeignBeacon(foreignC) // isLowPower=false (default): LRU puro, desaloja foreignA aunque sea AYUDA
+
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, foreignB, foreignC, own), observed, "fuera de bajo consumo, la prioridad no aplica")
+    }
+
+    @Test
+    fun lowPowerEvictsOkEntryFirstEvenIfOlderEntriesArePending() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0, foreignCapacity = 2)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val foreignA = packet(deviceByte = 2, nonce = 1, status = BeaconPacket.Status.AYUDA) // más antiguo, protegido
+        val foreignB = packet(deviceByte = 3, nonce = 1, status = BeaconPacket.Status.OK) // más nuevo, pero OK
+        val foreignC = packet(deviceByte = 4, nonce = 1, status = BeaconPacket.Status.SILENCIO_TIMEOUT)
+
+        queue.isLowPower = true
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.enqueueForeignBeacon(foreignC) // tope=2: debe desalojar foreignB (OK), no foreignA (AYUDA)
+
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, foreignA, foreignC, own), observed, "el OK se descarta antes que el AYUDA más antiguo")
+    }
+
+    @Test
+    fun lowPowerNeverEvictsProtectedStatusWhenNoOkAvailable() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0, foreignCapacity = 2)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val foreignA = packet(deviceByte = 2, nonce = 1, status = BeaconPacket.Status.AYUDA)
+        val foreignB = packet(deviceByte = 3, nonce = 1, status = BeaconPacket.Status.SILENCIO_TIMEOUT)
+        val foreignC = packet(deviceByte = 4, nonce = 1, status = BeaconPacket.Status.SIN_CONFIRMAR) // sin ningún OK disponible
+
+        queue.isLowPower = true
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.enqueueForeignBeacon(foreignC) // no debe desalojar nada — la cola crece por encima del tope
+
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(
+            listOf(own, foreignA, foreignB, foreignC, own),
+            observed,
+            "sin ningún OK que sacrificar, ninguna entrada protegida se pierde"
+        )
+    }
+
+    @Test
+    fun lowPowerEvictsOldestOkAmongMultipleOkEntries() {
+        val scheduler = FakeScheduler()
+        val queue = RelayQueue(scheduler = scheduler, window = 1.0, foreignCapacity = 2)
+        val observed = mutableListOf<BeaconPacket>()
+        queue.onCurrentPacketChanged = { observed.add(it) }
+        val own = packet(deviceByte = 1, nonce = 1)
+        val foreignA = packet(deviceByte = 2, nonce = 1, status = BeaconPacket.Status.OK) // OK más antiguo
+        val foreignB = packet(deviceByte = 3, nonce = 1, status = BeaconPacket.Status.OK)
+        val foreignC = packet(deviceByte = 4, nonce = 1, status = BeaconPacket.Status.AYUDA)
+
+        queue.isLowPower = true
+        queue.updateOwnBeacon(own)
+        queue.enqueueForeignBeacon(foreignA)
+        queue.enqueueForeignBeacon(foreignB)
+        queue.enqueueForeignBeacon(foreignC) // tope=2: desaloja el OK más antiguo (foreignA), no foreignB
+
+        queue.start()
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+        scheduler.advance(1.0)
+
+        assertEquals(listOf(own, foreignB, foreignC, own), observed)
     }
 }
