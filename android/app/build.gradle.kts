@@ -28,6 +28,7 @@ android {
 dependencies {
     implementation(project(":codec"))
     implementation(project(":personstate"))
+    implementation(project(":networkrole"))
     implementation(project(":beaconradio"))
     implementation("androidx.security:security-crypto:1.1.0")
 

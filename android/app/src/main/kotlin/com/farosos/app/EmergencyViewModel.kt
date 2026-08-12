@@ -14,6 +14,8 @@ import com.farosos.beaconradio.RandomNonceGenerator
 import com.farosos.beaconradio.RelayPolicy
 import com.farosos.beaconradio.RelayQueue
 import com.farosos.codec.BeaconPacketCodec
+import com.farosos.networkrole.NetworkRole
+import com.farosos.networkrole.NetworkRoleMachine
 import com.farosos.personstate.PersonState
 import com.farosos.personstate.PersonStateMachine
 
@@ -45,6 +47,8 @@ class EmergencyViewModel @JvmOverloads constructor(
 ) : AndroidViewModel(application) {
     var state by mutableStateOf(PersonState.DORMIDO)
         private set
+    var networkRole by mutableStateOf(NetworkRole.APAGADO)
+        private set
     val logEntries = mutableStateListOf<LogEntry>()
     var countdownSecondsRemaining by mutableStateOf<Int?>(null)
         private set
@@ -52,6 +56,7 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val handler = Handler(Looper.getMainLooper())
     private val scheduler = RealScheduler()
     private val machine = PersonStateMachine(scheduler, shakeDuration, confirmationWindow)
+    private val networkMachine = NetworkRoleMachine()
     private var countdownDeadlineMillis: Long? = null
     private var countdownRunnable: Runnable? = null
 
@@ -67,11 +72,33 @@ class EmergencyViewModel @JvmOverloads constructor(
     init {
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
+
+        networkMachine.onTransition = { newRole -> handleNetworkRoleTransition(newRole) }
+        // La app está en primer plano desde que se crea este view model — la
+        // Máquina B no requiere confirmación explícita del usuario para
+        // salir de APAGADO, a diferencia de la Máquina A.
+        networkMachine.appActivated()
     }
 
     fun simulateEarthquake() = machine.simulateEarthquake()
     fun confirmOk() = machine.confirmOk()
     fun requestHelp() = machine.requestHelp()
+
+    // --- Máquina B (rol de red, ticket #14) ---
+    //
+    // Sin BLE ni batería/conectividad reales todavía — estas señales se
+    // disparan a mano desde el panel "Red" de `LogScreen`, igual que
+    // "SIMULAR TERREMOTO" dispara la Máquina A sin un sismo real.
+
+    fun simulateConnectivityDetected() = networkMachine.connectivityDetected()
+    fun simulateNothingPendingToSync() = networkMachine.nothingPendingToSync()
+    fun simulateLowBattery() = networkMachine.updateBattery(percent = 10, isCharging = false)
+    fun simulateBatteryRecovered() = networkMachine.updateBattery(percent = 30, isCharging = false)
+
+    private fun handleNetworkRoleTransition(newRole: NetworkRole) {
+        networkRole = newRole
+        appendLogEntry(LogEntry.Kind.NetworkRoleTransition(newRole))
+    }
 
     /**
      * Arranca advertising + scanning por primera vez. Se llama desde

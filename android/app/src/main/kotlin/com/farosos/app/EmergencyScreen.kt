@@ -68,7 +68,15 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
     if (showingLog) {
         Dialog(onDismissRequest = { showingLog = false }) {
             Scaffold(topBar = { TopAppBar(title = { Text("Actividad") }) }) { padding ->
-                LogScreen(entries = viewModel.logEntries, modifier = Modifier.padding(padding))
+                LogScreen(
+                    entries = viewModel.logEntries,
+                    networkRole = viewModel.networkRole,
+                    onConnectivityDetected = viewModel::simulateConnectivityDetected,
+                    onNothingPendingToSync = viewModel::simulateNothingPendingToSync,
+                    onLowBattery = viewModel::simulateLowBattery,
+                    onBatteryRecovered = viewModel::simulateBatteryRecovered,
+                    modifier = Modifier.padding(padding)
+                )
             }
         }
     }
