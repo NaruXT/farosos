@@ -3,16 +3,12 @@ import PersonStateMachine
 import SwiftUI
 
 /// Log en pantalla de las transiciones de la Máquina de estados A y, desde
-/// el ticket #13, de la Máquina B (rol de red). Sin BLE ni batería real
-/// todavía en ninguna de las dos — el panel "Red" dispara las señales de la
-/// Máquina B a mano, igual que "SIMULAR TERREMOTO" dispara la Máquina A.
+/// el ticket #13, de la Máquina B (rol de red), poblada solo por señales
+/// reales del sistema (`BatteryMonitor`/`ConnectivityMonitor`/`RelayQueue`,
+/// tickets #20/#24).
 struct LogView: View {
     let entries: [LogEntry]
     let networkRole: NetworkRole
-    let onConnectivityDetected: () -> Void
-    let onNothingPendingToSync: () -> Void
-    let onLowBattery: () -> Void
-    let onBatteryRecovered: () -> Void
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -23,12 +19,7 @@ struct LogView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Red (Máquina B) — \(label(for: networkRole))") {
-                    Button("Conectividad detectada", action: onConnectivityDetected)
-                    Button("Nada pendiente de sincronizar", action: onNothingPendingToSync)
-                    Button("Simular batería < 15%", action: onLowBattery)
-                    Button("Simular batería > 25% / cargando", action: onBatteryRecovered)
-                }
+                Section("Red (Máquina B) — \(label(for: networkRole))") {}
                 Section("Actividad") {
                     ForEach(entries.reversed()) { entry in
                         HStack {
