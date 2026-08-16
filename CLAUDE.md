@@ -1,9 +1,11 @@
 # farosos
 
-Prototipo de red mesh local de emergencia vía BLE: teléfonos cercanos propagan
-un beacon de estado (bien / necesito ayuda / sin respuesta) + ubicación
-saltando de teléfono en teléfono durante un sismo, sin depender de internet
-ni señal celular.
+Prototipo de red mesh local de emergencia vía BLE, pensado ante todo para
+personas atrapadas bajo escombros después de un sismo, sin cobertura de
+internet ni señal celular: teléfonos cercanos propagan un beacon de estado
+(bien / necesito ayuda / sin respuesta) + ubicación, saltando de teléfono en
+teléfono hasta que alguno recupera señal o se conecta con un dispositivo que
+ya la tiene.
 
 ## Agent skills
 
