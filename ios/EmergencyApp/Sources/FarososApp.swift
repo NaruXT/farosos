@@ -1,10 +1,21 @@
+import FirebaseCore
 import SwiftUI
 
 @main
 struct FarososApp: App {
+    @State private var isRegistered = KeychainParticipantStore.hasRegisteredProfile()
+
+    init() {
+        FirebaseApp.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
-            EmergencyView()
+            if isRegistered {
+                EmergencyView()
+            } else {
+                RegistrationView(onCompleted: { isRegistered = true })
+            }
         }
     }
 }

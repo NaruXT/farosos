@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import NetworkRoleMachine
 import PacketCodec
+import ParticipantRegistration
 import PersonStateMachine
 
 /// Limitación conocida: el estado vive solo en memoria dentro de esta
@@ -47,6 +48,7 @@ final class EmergencyViewModel: ObservableObject {
     private let relayQueue: RelayQueue
     private let batteryMonitor = BatteryMonitor()
     private let connectivityMonitor = ConnectivityMonitor()
+    private let participantUploadCoordinator: ParticipantUploadCoordinator
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -55,6 +57,14 @@ final class EmergencyViewModel: ObservableObject {
         self.shakeDuration = shakeDuration
         self.confirmationWindow = confirmationWindow
         deviceIdHash = KeychainDeviceIdentity.deviceIdHash()
+        participantUploadCoordinator = ParticipantUploadCoordinator(
+            deviceIdHash: deviceIdHash,
+            uploader: FirebaseParticipantUploader(),
+            pendingProfile: KeychainParticipantStore.pendingProfile()
+        )
+        participantUploadCoordinator.onUploadSucceeded = {
+            KeychainParticipantStore.markUploaded()
+        }
         let scheduler = RealScheduler()
         machine = PersonStateMachine(
             scheduler: scheduler,
@@ -103,6 +113,7 @@ final class EmergencyViewModel: ObservableObject {
         connectivityMonitor.onConnectivityChanged = onMain { viewModel, hasConnectivity in
             guard hasConnectivity else { return }
             viewModel.networkMachine.connectivityDetected()
+            viewModel.participantUploadCoordinator.connectivityDetected()
         }
         // `RelayQueue` ya despacha en el hilo principal (ver `wireRadio`),
         // así que esto no necesita pasar por `onMain`.
