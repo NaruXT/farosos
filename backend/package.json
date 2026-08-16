@@ -1,0 +1,15 @@
+{
+  "name": "farosos-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --project farosos-rules-test --only firestore,auth \"node --test tests/*.test.mjs\"",
+    "verify-dedup": "node scripts/verify-dedup.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "firebase-admin": "^13.0.0",
+    "firebase-tools": "^13.29.0"
+  }
+}

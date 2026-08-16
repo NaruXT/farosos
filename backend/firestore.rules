@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // La credencial compartida del panel de rescate inicia sesión con
+    // email/password; los teléfonos de la app usan Firebase Anonymous Auth
+    // (ver docs/adr/0003-identidad-participantes-registro-opt-in.md).
+    function isRescuePanel() {
+      return isAuthenticated() &&
+        request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // El ID de documento no es arbitrario: codifica la convención de
+    // deduplicación (docs/adr/0002-dedup-multi-gateway-id-deterministico.md)
+    // para que dos gateways subiendo el mismo (persona, secuencia) escriban
+    // siempre el mismo documento, sin depender de que el cliente la respete.
+    function matchesMeshStateId(docId, data) {
+      return docId == data.device_id_hash + '_' + string(data.sequence);
+    }
+
+    function matchesParticipantId(docId, data) {
+      return docId == data.device_id_hash;
+    }
+
+    match /mesh_states/{docId} {
+      allow read: if isRescuePanel();
+      allow create, update: if isAuthenticated() &&
+        matchesMeshStateId(docId, request.resource.data);
+    }
+
+    match /participants/{docId} {
+      allow read: if isRescuePanel();
+      allow create, update: if isAuthenticated() &&
+        matchesParticipantId(docId, request.resource.data);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
