@@ -16,3 +16,11 @@ class LogEntry(val timestampMillis: Long, val kind: Kind) {
         class NetworkRoleTransition(val role: NetworkRole) : Kind()
     }
 }
+
+/**
+ * Formato compacto de un `deviceIdHash` para mostrarlo en el log
+ * (`LogScreen`) o loguearlo desde el propio `EmergencyViewModel` (#35) —
+ * vive junto a `LogEntry` en vez de en `LogScreen` para no obligar a la
+ * capa de view model a depender de un archivo `@Composable`.
+ */
+fun ByteArray.shortHex(): String = joinToString("") { "%02x".format(it) }

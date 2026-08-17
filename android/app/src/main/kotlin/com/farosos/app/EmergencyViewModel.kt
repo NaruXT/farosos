@@ -83,6 +83,7 @@ class EmergencyViewModel @JvmOverloads constructor(
 
     init {
         participantUploadCoordinator.onUploadSucceeded = { ParticipantStore.markUploaded(application) }
+        appendLogEntry(LogEntry.Kind.Info("device_id_hash propio: ${deviceIdHash.shortHex()}"))
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
 
