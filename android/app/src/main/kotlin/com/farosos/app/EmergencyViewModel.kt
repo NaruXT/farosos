@@ -9,7 +9,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.farosos.beaconradio.DedupCache
+import com.farosos.beaconradio.GatewayUploader
 import com.farosos.beaconradio.LocalBeaconFactory
+import com.farosos.beaconradio.MeshStateRegistry
 import com.farosos.beaconradio.RandomNonceGenerator
 import com.farosos.beaconradio.RelayPolicy
 import com.farosos.beaconradio.RelayQueue
@@ -74,6 +76,8 @@ class EmergencyViewModel @JvmOverloads constructor(
         uploader = FirebaseParticipantUploader(),
         pendingProfile = ParticipantStore.pendingProfile(application)
     )
+    private val meshStateRegistry = MeshStateRegistry()
+    private val gatewayUploader = GatewayUploader(meshStateRegistry, FirebaseMeshStateUploader())
     private var radioStarted = false
     private var isForeground = false
 
@@ -109,6 +113,7 @@ class EmergencyViewModel @JvmOverloads constructor(
      * `GATEWAY_ACTIVO` arma/retira el anuncio de gateway.
      */
     private fun wireNetworkMonitors() {
+        gatewayUploader.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error.message ?: error.toString())) }
         batteryMonitor.onBatteryChanged = onMain { reading ->
             networkMachine.updateBattery(percent = reading.percent, isCharging = reading.isCharging)
         }
@@ -134,8 +139,10 @@ class EmergencyViewModel @JvmOverloads constructor(
         relayQueue.isLowPower = newRole == NetworkRole.BAJO_CONSUMO
         if (newRole == NetworkRole.GATEWAY_ACTIVO) {
             refreshGatewayAnnouncement()
+            gatewayUploader.start()
         } else {
             relayQueue.clearGatewayAnnouncement()
+            gatewayUploader.stop()
         }
     }
 
@@ -246,7 +253,12 @@ class EmergencyViewModel @JvmOverloads constructor(
      * retransmitir, rotando en round-robin. Se auto-registra en la propia
      * caché de dedup al emitir (decisión 12): si este mismo beacon rebota
      * de un vecino, se descarta como duplicado por el mismo camino que
-     * cualquier otro, sin una ruta de código especial para "es mío".
+     * cualquier otro, sin una ruta de código especial para "es mío" — pero
+     * eso también significa que `handleReceivedPacketData` nunca lo ve, así
+     * que `meshStateRegistry` se alimenta acá también (#32, mismo fix que
+     * #31/iOS aplicado desde el arranque, no como corrección posterior): sin
+     * esto, un teléfono en GATEWAY_ACTIVO subiría el estado de otros pero
+     * nunca el propio.
      */
     private fun refreshAdvertisedBeacon() {
         val packet = LocalBeaconFactory.makeBeacon(
@@ -258,6 +270,7 @@ class EmergencyViewModel @JvmOverloads constructor(
         )
         dedupCache.insertIfAbsent(DedupCache.Key(packet.deviceIdHash, packet.nonce))
         relayQueue.updateOwnBeacon(packet)
+        meshStateRegistry.update(packet)
     }
 
     /**
@@ -274,6 +287,7 @@ class EmergencyViewModel @JvmOverloads constructor(
             return
         }
         appendLogEntry(LogEntry.Kind.BeaconReceived(packet.deviceIdHash, packet.ttl, packet.sequence))
+        meshStateRegistry.update(packet)
         val relayed = RelayPolicy.decrementedForRelay(packet)
         if (relayed != null) {
             relayQueue.enqueueForeignBeacon(relayed)

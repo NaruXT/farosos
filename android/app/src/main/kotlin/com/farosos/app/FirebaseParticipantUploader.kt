@@ -4,7 +4,6 @@ import com.farosos.participantregistration.ParticipantIds
 import com.farosos.participantregistration.ParticipantProfile
 import com.farosos.participantregistration.ParticipantUploading
 import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import com.google.firebase.firestore.firestore
 
 /**
@@ -16,7 +15,7 @@ import com.google.firebase.firestore.firestore
  */
 class FirebaseParticipantUploader : ParticipantUploading {
     override fun upload(deviceIdHash: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit) {
-        ensureSignedIn { signInResult ->
+        FirebaseAuthSession.ensureSignedIn { signInResult ->
             signInResult.fold(
                 onSuccess = {
                     val hashHex = ParticipantIds.deviceIdHashHex(deviceIdHash)
@@ -32,16 +31,5 @@ class FirebaseParticipantUploader : ParticipantUploading {
                 onFailure = { error -> onResult(Result.failure(error)) }
             )
         }
-    }
-
-    private fun ensureSignedIn(onResult: (Result<Unit>) -> Unit) {
-        val auth = Firebase.auth
-        if (auth.currentUser != null) {
-            onResult(Result.success(Unit))
-            return
-        }
-        auth.signInAnonymously()
-            .addOnSuccessListener { onResult(Result.success(Unit)) }
-            .addOnFailureListener { error -> onResult(Result.failure(error)) }
     }
 }
