@@ -23,10 +23,12 @@ public struct MeshParticipantState: Equatable {
 
 /// Guarda el último estado conocido de la malla por `deviceIdHash` — "lo que
 /// este teléfono sabe", para subir al backend de agregación al entrar a
-/// `GATEWAY_ACTIVO` (ticket #31). Se alimenta en el seam de
-/// `handleReceivedPacketData`, sin importar el rol de red actual, para que
-/// el snapshot inicial al activarse como gateway ya incluya lo visto antes
-/// de convertirse en gateway.
+/// `GATEWAY_ACTIVO` (ticket #31). Se alimenta desde dos puntos en la capa de
+/// app, sin importar el rol de red actual (para que el snapshot inicial al
+/// activarse como gateway ya incluya lo visto antes de convertirse en
+/// gateway): el seam de `handleReceivedPacketData` (beacons ajenos) y el de
+/// `refreshAdvertisedBeacon` (el propio estado — nunca llega por el primer
+/// camino porque se auto-descarta como duplicado al rebotar, decisión 12).
 public final class MeshStateRegistry {
     /// Se dispara solo cuando `update` acepta un estado nuevo — no en cada
     /// llamada.

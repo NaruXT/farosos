@@ -226,7 +226,10 @@ final class EmergencyViewModel: ObservableObject {
     /// en la propia caché de dedup al emitir (decisión 12): si este mismo
     /// beacon rebota de un vecino, se descarta como duplicado por el mismo
     /// camino que cualquier otro, sin una ruta de código especial para "es
-    /// mío".
+    /// mío" — pero eso también significa que `handleReceivedPacketData`
+    /// nunca lo ve, así que `meshStateRegistry` se alimenta acá también
+    /// (#31): sin esto, un teléfono en `GATEWAY_ACTIVO` subiría el estado de
+    /// otros pero nunca el propio.
     private func refreshAdvertisedBeacon() {
         let packet = LocalBeaconFactory.makeBeacon(
             deviceIdHash: deviceIdHash,
@@ -237,6 +240,7 @@ final class EmergencyViewModel: ObservableObject {
         )
         dedupCache.insertIfAbsent(DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))
         relayQueue.updateOwnBeacon(packet)
+        meshStateRegistry.update(with: packet)
     }
 
     /// Punto de entrada compartido por ambas rutas de recepción (Manufacturer
