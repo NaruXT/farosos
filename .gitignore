@@ -6,6 +6,7 @@
 .gradle/
 .kotlin/
 build/
+*.hprof
 
 # Xcode
 *.xcuserstate

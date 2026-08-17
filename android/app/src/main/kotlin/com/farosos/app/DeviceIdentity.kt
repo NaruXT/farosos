@@ -1,8 +1,6 @@
 package com.farosos.app
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -24,22 +22,10 @@ object DeviceIdentity {
     }
 
     private fun installationUUIDString(context: Context): String {
-        val prefs = encryptedPrefs(context)
+        val prefs = EncryptedPrefsStore.open(PREFS_FILE_NAME, context)
         prefs.getString(KEY_INSTALLATION_ID, null)?.let { return it }
         val generated = UUID.randomUUID().toString()
         prefs.edit().putString(KEY_INSTALLATION_ID, generated).apply()
         return generated
     }
-
-    // androidx.security-crypto 1.1.0 marca EncryptedSharedPreferences/MasterKey
-    // como deprecados sin un reemplazo estable documentado todavía — se
-    // mantienen porque siguen siendo funcionales y son la API explícita que
-    // pide la decisión 6 del spec.
-    private fun encryptedPrefs(context: Context) = EncryptedSharedPreferences.create(
-        context,
-        PREFS_FILE_NAME,
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
 }

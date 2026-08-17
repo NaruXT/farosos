@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "714487497878",
+    "project_id": "farosos-project",
+    "storage_bucket": "farosos-project.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:714487497878:android:72c6be537b226a45ebaeb7",
+        "android_client_info": {
+          "package_name": "com.farosos.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdN7GFgsHWKWyuEcLNQK-_o9P64D4UmU4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

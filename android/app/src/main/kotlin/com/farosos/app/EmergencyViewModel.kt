@@ -16,6 +16,7 @@ import com.farosos.beaconradio.RelayQueue
 import com.farosos.codec.BeaconPacketCodec
 import com.farosos.networkrole.NetworkRole
 import com.farosos.networkrole.NetworkRoleMachine
+import com.farosos.participantregistration.ParticipantUploadCoordinator
 import com.farosos.personstate.PersonState
 import com.farosos.personstate.PersonStateMachine
 
@@ -68,10 +69,16 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val relayQueue = RelayQueue(scheduler)
     private val batteryMonitor = BatteryMonitor(application)
     private val connectivityMonitor = ConnectivityMonitor(application)
+    private val participantUploadCoordinator = ParticipantUploadCoordinator(
+        deviceIdHash = deviceIdHash,
+        uploader = FirebaseParticipantUploader(),
+        pendingProfile = ParticipantStore.pendingProfile(application)
+    )
     private var radioStarted = false
     private var isForeground = false
 
     init {
+        participantUploadCoordinator.onUploadSucceeded = { ParticipantStore.markUploaded(application) }
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
 
@@ -106,7 +113,10 @@ class EmergencyViewModel @JvmOverloads constructor(
             networkMachine.updateBattery(percent = reading.percent, isCharging = reading.isCharging)
         }
         connectivityMonitor.onConnectivityChanged = onMain { hasConnectivity ->
-            if (hasConnectivity) networkMachine.connectivityDetected()
+            if (hasConnectivity) {
+                networkMachine.connectivityDetected()
+                participantUploadCoordinator.connectivityDetected()
+            }
         }
         // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
         // looper) que la Máquina A, así que este callback ya llega en el

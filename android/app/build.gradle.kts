@@ -3,6 +3,16 @@ plugins {
     kotlin("plugin.compose")
 }
 
+// El plugin de Google Services falla la CONFIGURACIÓN de todo el build
+// multi-módulo (no solo de :app) si `google-services.json` no existe — y
+// Gradle configura todos los subproyectos aunque se apunte a una sola
+// tarea de otro módulo (p. ej. `gradle :codec:test`). Aplicarlo solo si el
+// archivo real ya está — ver android/app/README.md para el paso manual
+// (registrar la app en la consola de Firebase, descargar el archivo).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.farosos.app"
     compileSdk = 37
@@ -30,7 +40,12 @@ dependencies {
     implementation(project(":personstate"))
     implementation(project(":networkrole"))
     implementation(project(":beaconradio"))
+    implementation(project(":participantregistration"))
     implementation("androidx.security:security-crypto:1.1.0")
+
+    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
 
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.compose.ui:ui")

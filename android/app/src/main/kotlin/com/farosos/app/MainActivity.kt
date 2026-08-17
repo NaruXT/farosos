@@ -12,6 +12,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -43,30 +47,37 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    val viewModel: EmergencyViewModel = viewModel()
-                    val permissionLauncher = rememberLauncherForActivityResult(
-                        ActivityResultContracts.RequestMultiplePermissions()
-                    ) { grantResults ->
-                        if (grantResults.values.all { it }) viewModel.startRadioIfNotStarted()
+                    var isRegistered by remember {
+                        mutableStateOf(ParticipantStore.hasRegisteredProfile(applicationContext))
                     }
-                    LaunchedEffect(Unit) { permissionLauncher.launch(bluetoothPermissions) }
-
-                    // Operación foreground-only: Android no detiene BLE por su
-                    // cuenta al pasar a background (a diferencia de iOS).
-                    val lifecycleOwner = LocalLifecycleOwner.current
-                    DisposableEffect(lifecycleOwner, viewModel) {
-                        val observer = LifecycleEventObserver { _, event ->
-                            when (event) {
-                                Lifecycle.Event.ON_START -> viewModel.onAppForegrounded()
-                                Lifecycle.Event.ON_STOP -> viewModel.onAppBackgrounded()
-                                else -> Unit
-                            }
+                    if (!isRegistered) {
+                        RegistrationScreen(onCompleted = { isRegistered = true })
+                    } else {
+                        val viewModel: EmergencyViewModel = viewModel()
+                        val permissionLauncher = rememberLauncherForActivityResult(
+                            ActivityResultContracts.RequestMultiplePermissions()
+                        ) { grantResults ->
+                            if (grantResults.values.all { it }) viewModel.startRadioIfNotStarted()
                         }
-                        lifecycleOwner.lifecycle.addObserver(observer)
-                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-                    }
+                        LaunchedEffect(Unit) { permissionLauncher.launch(bluetoothPermissions) }
 
-                    EmergencyScreen(viewModel)
+                        // Operación foreground-only: Android no detiene BLE por su
+                        // cuenta al pasar a background (a diferencia de iOS).
+                        val lifecycleOwner = LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner, viewModel) {
+                            val observer = LifecycleEventObserver { _, event ->
+                                when (event) {
+                                    Lifecycle.Event.ON_START -> viewModel.onAppForegrounded()
+                                    Lifecycle.Event.ON_STOP -> viewModel.onAppBackgrounded()
+                                    else -> Unit
+                                }
+                            }
+                            lifecycleOwner.lifecycle.addObserver(observer)
+                            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                        }
+
+                        EmergencyScreen(viewModel)
+                    }
                 }
             }
         }

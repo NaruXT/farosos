@@ -20,6 +20,10 @@
     <!-- Requerido por `ConnectivityManager.registerNetworkCallback`
          (ticket #17/#21, detección de conectividad real de la Máquina B). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Requerido por Firebase Auth/Firestore (ticket #30, subida de
+         `participants/{device_id_hash}`) — primer código de esta app que
+         hace requests HTTP reales. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
