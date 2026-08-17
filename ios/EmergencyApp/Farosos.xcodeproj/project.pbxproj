@@ -30,6 +30,7 @@
 		EBB52732AF337BFE2D8F7B69 /* RegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F054822657F0D778DC9EC36 /* RegistrationView.swift */; };
 		ED407137EAB4BF258A7294D1 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 1C7A6007AF424012B968BA2E /* FirebaseAuth */; };
 		F0BA61A4E365FC3C207C6DCE /* FirebaseParticipantUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE9260BACE6294408DCEF7E /* FirebaseParticipantUploader.swift */; };
+		F508F2F48CF7A29B24ECAF6D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */; };
 		FAC4273AD5378C3FBC8CCD1E /* RealScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D148061E314F0B683720C25B /* RealScheduler.swift */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +42,7 @@
 		5DE73C3625A095134B1280AD /* FarososApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FarososApp.swift; sourceTree = "<group>"; };
 		61E4A356C73D0458CC4F927E /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceIdentity.swift; sourceTree = "<group>"; };
+		6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
 		741C4A524E7E1ED47C35CD5D /* BleScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleScanner.swift; sourceTree = "<group>"; };
 		7C4AF6ECD7B5E491F4AC22C2 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 				E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */,
 				5DE73C3625A095134B1280AD /* FarososApp.swift */,
 				9CE9260BACE6294408DCEF7E /* FirebaseParticipantUploader.swift */,
+				6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */,
 				625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */,
 				3528BA983C47C653155442C3 /* KeychainParticipantStore.swift */,
 				7C4AF6ECD7B5E491F4AC22C2 /* KeychainStore.swift */,
@@ -129,6 +132,7 @@
 			buildConfigurationList = 47CB9FDCEE1EAA52E9E25EF9 /* Build configuration list for PBXNativeTarget "EmergencyApp" */;
 			buildPhases = (
 				C15F1A6AA3C1703241207B16 /* Sources */,
+				67943A0FC60468AA54CBDD03 /* Resources */,
 				D6D970E6DF31A1C0E2FC55E3 /* Frameworks */,
 			);
 			buildRules = (
@@ -183,6 +187,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		67943A0FC60468AA54CBDD03 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F508F2F48CF7A29B24ECAF6D /* GoogleService-Info.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		C15F1A6AA3C1703241207B16 /* Sources */ = {
