@@ -127,6 +127,28 @@ for (const { name: collectionName, build, docId } of COLLECTIONS) {
   });
 }
 
+describe('lectura de colección completa (Panel de rescate, #33)', () => {
+  it('permite listar toda la colección mesh_states con la credencial compartida', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', meshStateDocId('aaa', 0)), buildMeshState({ device_id_hash: 'aaa', sequence: 0 }));
+      await setDoc(doc(ctx.firestore(), 'mesh_states', meshStateDocId('bbb', 0)), buildMeshState({ device_id_hash: 'bbb', sequence: 0 }));
+    });
+
+    const dashboard = passwordContext('rescue-dashboard');
+    const snapshot = await assertSucceeds(getDocs(collection(dashboard.firestore(), 'mesh_states')));
+    assert.equal(snapshot.size, 2);
+  });
+
+  it('deniega listar toda la colección mesh_states con sesión anónima', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', meshStateDocId('aaa', 0)), buildMeshState({ device_id_hash: 'aaa', sequence: 0 }));
+    });
+
+    const anon = anonContext('gateway-phone-1');
+    await assertFails(getDocs(collection(anon.firestore(), 'mesh_states')));
+  });
+});
+
 describe('deduplicación por ID determinístico ({device_id_hash}_{sequence})', () => {
   it('dos gateways subiendo la misma (persona, secuencia) no generan dos documentos', async () => {
     const sample = buildMeshState();

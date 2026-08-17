@@ -1,0 +1,158 @@
+:root {
+  color-scheme: light;
+  --border: #d0d5dd;
+  --text-muted: #667085;
+  --bg: #f9fafb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: #101828;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #101828;
+  color: white;
+}
+
+header h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+#login-section {
+  display: flex;
+  justify-content: center;
+  padding: 64px 24px;
+}
+
+#login-section[hidden] {
+  display: none;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  background: white;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+}
+
+#login-form input {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+#login-error {
+  color: #b42318;
+  font-size: 0.875rem;
+}
+
+main {
+  padding: 24px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+th {
+  background: #f2f4f7;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #1570ef;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.status {
+  font-weight: 600;
+}
+
+.status-ayuda {
+  color: #b42318;
+}
+
+.status-silencio_timeout {
+  color: #b54708;
+}
+
+.status-ok {
+  color: #067647;
+}
+
+.status-sin_confirmar,
+.status-gateway_disponible {
+  color: var(--text-muted);
+}
+
+#history-back-button {
+  margin-bottom: 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button[type='submit'] {
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: #1570ef;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+#logout-button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
