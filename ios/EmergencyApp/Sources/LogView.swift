@@ -19,7 +19,17 @@ struct LogView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Red (Máquina B) — \(label(for: networkRole))") {}
+                Section("Red (Máquina B)") {
+                    HStack(spacing: 12) {
+                        let presentation = presentation(for: networkRole)
+                        Image(systemName: presentation.icon)
+                            .foregroundStyle(presentation.tint)
+                            .imageScale(.large)
+                        Text(label(for: networkRole))
+                            .font(.body.bold())
+                        Spacer()
+                    }
+                }
                 Section("Actividad") {
                     ForEach(entries.reversed()) { entry in
                         HStack {
@@ -62,18 +72,24 @@ struct LogView: View {
         case .networkRoleTransition:
             return "Máquina B (rol de red)"
         case .beaconReceived(let deviceIdHash, let ttl, let sequence):
-            return "De \(shortHex(deviceIdHash)) · TTL \(ttl) · Secuencia \(sequence)"
+            return "De \(deviceIdHash.shortHex) · TTL \(ttl) · Secuencia \(sequence)"
         case .duplicateDiscarded(let deviceIdHash, let nonce):
-            return "De \(shortHex(deviceIdHash)) · Nonce \(nonce)"
+            return "De \(deviceIdHash.shortHex) · Nonce \(nonce)"
         case .ttlExhausted(let deviceIdHash, let sequence):
-            return "De \(shortHex(deviceIdHash)) · Secuencia \(sequence)"
+            return "De \(deviceIdHash.shortHex) · Secuencia \(sequence)"
         case .info(let message):
             return message
         }
     }
 
-    private func shortHex(_ data: Data) -> String {
-        data.map { String(format: "%02x", $0) }.joined()
+    private func presentation(for role: NetworkRole) -> (icon: String, tint: Color) {
+        switch role {
+        case .apagado: return ("power", .secondary)
+        case .soloRetransmite: return ("arrow.triangle.2.circlepath", .blue)
+        case .gatewayActivo: return ("antenna.radiowaves.left.and.right", .green)
+        case .sincronizadoIdle: return ("checkmark.circle", .secondary)
+        case .bajoConsumo: return ("battery.25", .orange)
+        }
     }
 
     private func label(for state: PersonState) -> String {

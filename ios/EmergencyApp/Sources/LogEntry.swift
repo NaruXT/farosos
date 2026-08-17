@@ -20,3 +20,13 @@ struct LogEntry: Identifiable {
         case networkRoleTransition(role: NetworkRole)
     }
 }
+
+extension Data {
+    /// Formato compacto de un `deviceIdHash` para mostrarlo en el log
+    /// (`LogView`) o loguearlo desde el propio `EmergencyViewModel` (#34) —
+    /// vive junto a `LogEntry` en vez de en `LogView` para no obligar a la
+    /// capa de view model a depender de un tipo `View`.
+    var shortHex: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+}

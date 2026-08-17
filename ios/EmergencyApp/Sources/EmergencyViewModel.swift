@@ -75,6 +75,7 @@ final class EmergencyViewModel: ObservableObject {
             confirmationWindow: confirmationWindow
         )
         relayQueue = RelayQueue(scheduler: scheduler)
+        appendLogEntry(.info(message: "device_id_hash propio: \(deviceIdHash.shortHex)"))
         appendLogEntry(.transition(state: machine.state, sequence: machine.sequence))
         machine.onTransition = { [weak self] newState in
             self?.handleTransition(to: newState)
