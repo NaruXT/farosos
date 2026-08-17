@@ -25,12 +25,18 @@ export function historyForDevice(meshStates, deviceIdHash) {
     .sort((a, b) => a.sequence - b.sequence);
 }
 
-/** Agrega el nombre del `participants/{device_id_hash}` correspondiente,
- * sin mutar el estado original. Si no hay participant registrado, `name`
- * queda `null` — el hash se muestra crudo en su lugar (AC de #33). */
-export function attachParticipantName(meshState, participantsByHash) {
+/** Agrega el nombre y contacto del `participants/{device_id_hash}`
+ * correspondiente, sin mutar el estado original. Si no hay participant
+ * registrado, o si registró nombre sin contacto (ambos opcionales salvo el
+ * nombre, ver ADR-0003), los campos faltantes quedan `null` — el hash se
+ * muestra crudo en su lugar (AC de #33). */
+export function attachParticipantInfo(meshState, participantsByHash) {
   const participant = participantsByHash[meshState.device_id_hash];
-  return { ...meshState, name: participant ? participant.name : null };
+  return {
+    ...meshState,
+    name: participant ? participant.name : null,
+    contact: participant?.contacto ?? null,
+  };
 }
 
 /** Orden de la vista de estado actual: más reciente primero. */

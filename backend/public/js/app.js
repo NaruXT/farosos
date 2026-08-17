@@ -11,7 +11,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { latestPerDevice, historyForDevice, attachParticipantName, sortByMostRecent } from './meshView.mjs';
+import { latestPerDevice, historyForDevice, attachParticipantInfo, sortByMostRecent } from './meshView.mjs';
 
 const STATUS_LABELS = {
   SIN_CONFIRMAR: 'Sin confirmar',
@@ -109,7 +109,7 @@ function render() {
 
 function renderCurrentState() {
   const latest = sortByMostRecent(
-    latestPerDevice(meshStates).map((state) => attachParticipantName(state, participantsByHash))
+    latestPerDevice(meshStates).map((state) => attachParticipantInfo(state, participantsByHash))
   );
 
   currentStateBody.textContent = '';
@@ -126,6 +126,10 @@ function renderCurrentState() {
     personButton.addEventListener('click', () => showHistory(state.device_id_hash, state.name));
     personCell.appendChild(personButton);
     row.appendChild(personCell);
+
+    const contactCell = document.createElement('td');
+    contactCell.textContent = state.contact ?? '—';
+    row.appendChild(contactCell);
 
     row.appendChild(statusCell(state.status));
     row.appendChild(locationCell(state.latitude, state.longitude));

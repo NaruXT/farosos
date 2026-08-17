@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { latestPerDevice, historyForDevice, attachParticipantName, sortByMostRecent } from '../public/js/meshView.mjs';
+import { latestPerDevice, historyForDevice, attachParticipantInfo, sortByMostRecent } from '../public/js/meshView.mjs';
 
 function state(overrides = {}) {
   return {
@@ -69,26 +69,38 @@ describe('historyForDevice', () => {
   });
 });
 
-describe('attachParticipantName', () => {
-  it('agrega el nombre cuando existe un participant con ese device_id_hash', () => {
-    const result = attachParticipantName(state({ device_id_hash: 'aaa' }), { aaa: { name: 'Ana' } });
+describe('attachParticipantInfo', () => {
+  it('agrega nombre y contacto cuando existe un participant con ambos campos', () => {
+    const result = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {
+      aaa: { name: 'Ana', contacto: '+51999999999' },
+    });
     assert.equal(result.name, 'Ana');
+    assert.equal(result.contact, '+51999999999');
   });
 
-  it('tolera que no exista participant para ese device_id_hash — name queda null', () => {
-    const result = attachParticipantName(state({ device_id_hash: 'zzz' }), { aaa: { name: 'Ana' } });
+  it('tolera un participant con nombre pero sin contacto (contacto es opcional, ADR-0003) — contact queda null', () => {
+    const result = attachParticipantInfo(state({ device_id_hash: 'aaa' }), { aaa: { name: 'Ana' } });
+    assert.equal(result.name, 'Ana');
+    assert.equal(result.contact, null);
+  });
+
+  it('tolera que no exista participant para ese device_id_hash — name y contact quedan null', () => {
+    const result = attachParticipantInfo(state({ device_id_hash: 'zzz' }), { aaa: { name: 'Ana' } });
     assert.equal(result.name, null);
+    assert.equal(result.contact, null);
   });
 
   it('tolera un mapa de participants vacío', () => {
-    const result = attachParticipantName(state({ device_id_hash: 'aaa' }), {});
+    const result = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {});
     assert.equal(result.name, null);
+    assert.equal(result.contact, null);
   });
 
   it('no muta el estado original', () => {
     const original = state({ device_id_hash: 'aaa' });
-    attachParticipantName(original, { aaa: { name: 'Ana' } });
+    attachParticipantInfo(original, { aaa: { name: 'Ana', contacto: '+51999999999' } });
     assert.equal(original.name, undefined);
+    assert.equal(original.contact, undefined);
   });
 });
 
