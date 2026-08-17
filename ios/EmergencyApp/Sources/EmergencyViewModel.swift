@@ -49,6 +49,8 @@ final class EmergencyViewModel: ObservableObject {
     private let batteryMonitor = BatteryMonitor()
     private let connectivityMonitor = ConnectivityMonitor()
     private let participantUploadCoordinator: ParticipantUploadCoordinator
+    private let meshStateRegistry = MeshStateRegistry()
+    private let gatewayUploader: GatewayUploader
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -65,6 +67,7 @@ final class EmergencyViewModel: ObservableObject {
         participantUploadCoordinator.onUploadSucceeded = {
             KeychainParticipantStore.markUploaded()
         }
+        gatewayUploader = GatewayUploader(registry: meshStateRegistry, uploader: FirebaseMeshStateUploader())
         let scheduler = RealScheduler()
         machine = PersonStateMachine(
             scheduler: scheduler,
@@ -107,6 +110,9 @@ final class EmergencyViewModel: ObservableObject {
     /// #17/#20): `BAJO_CONSUMO` activa la prioridad de descarte, y
     /// `GATEWAY_ACTIVO` arma/retira el anuncio de gateway.
     private func wireNetworkMonitors() {
+        gatewayUploader.onError = onMain { viewModel, error in
+            viewModel.appendLogEntry(.info(message: error.localizedDescription))
+        }
         batteryMonitor.onBatteryChanged = onMain { viewModel, reading in
             viewModel.networkMachine.updateBattery(percent: reading.percent, isCharging: reading.isCharging)
         }
@@ -135,8 +141,10 @@ final class EmergencyViewModel: ObservableObject {
         relayQueue.isLowPower = (newRole == .bajoConsumo)
         if newRole == .gatewayActivo {
             refreshGatewayAnnouncement()
+            gatewayUploader.start()
         } else {
             relayQueue.clearGatewayAnnouncement()
+            gatewayUploader.stop()
         }
     }
 
@@ -243,6 +251,7 @@ final class EmergencyViewModel: ObservableObject {
             return
         }
         appendLogEntry(.beaconReceived(deviceIdHash: packet.deviceIdHash, ttl: packet.ttl, sequence: packet.sequence))
+        meshStateRegistry.update(with: packet)
         if let relayed = RelayPolicy.decrementedForRelay(packet) {
             relayQueue.enqueueForeignBeacon(relayed)
         } else {
