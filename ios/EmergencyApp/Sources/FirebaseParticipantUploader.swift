@@ -1,4 +1,3 @@
-import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import ParticipantRegistration
@@ -10,7 +9,7 @@ import ParticipantRegistration
 /// la clase concreta real vive sin tests en la capa de app.
 final class FirebaseParticipantUploader: ParticipantUploading {
     func upload(deviceIdHash: Data, profile: ParticipantProfile, completion: @escaping (Result<Void, Error>) -> Void) {
-        ensureSignedIn { result in
+        FirebaseAuthSession.ensureSignedIn { result in
             switch result {
             case .failure(let error):
                 completion(.failure(error))
@@ -30,20 +29,6 @@ final class FirebaseParticipantUploader: ParticipantUploading {
                         completion(.success(()))
                     }
                 }
-            }
-        }
-    }
-
-    private func ensureSignedIn(completion: @escaping (Result<Void, Error>) -> Void) {
-        if Auth.auth().currentUser != nil {
-            completion(.success(()))
-            return
-        }
-        Auth.auth().signInAnonymously { _, error in
-            if let error {
-                completion(.failure(error))
-            } else {
-                completion(.success(()))
             }
         }
     }

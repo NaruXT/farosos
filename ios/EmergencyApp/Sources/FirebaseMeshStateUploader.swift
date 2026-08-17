@@ -12,7 +12,7 @@ import PacketCodec
 /// concreta real vive sin tests en la capa de app.
 final class FirebaseMeshStateUploader: MeshStateUploading {
     func upsert(_ state: MeshParticipantState, completion: @escaping (Result<Void, Error>) -> Void) {
-        ensureSignedIn { result in
+        FirebaseAuthSession.ensureSignedIn { result in
             switch result {
             case .failure(let error):
                 completion(.failure(error))
@@ -38,20 +38,6 @@ final class FirebaseMeshStateUploader: MeshStateUploading {
                         completion(.success(()))
                     }
                 }
-            }
-        }
-    }
-
-    private func ensureSignedIn(completion: @escaping (Result<Void, Error>) -> Void) {
-        if Auth.auth().currentUser != nil {
-            completion(.success(()))
-            return
-        }
-        Auth.auth().signInAnonymously { _, error in
-            if let error {
-                completion(.failure(error))
-            } else {
-                completion(.success(()))
             }
         }
     }

@@ -22,6 +22,7 @@
 		9494C0B3CBA9D9214B91B2DD /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C062AFF83274A22E4A7DE982 /* FirebaseFirestore */; };
 		997968B4BC1608E98F72A746 /* EmergencyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */; };
 		A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE73C3625A095134B1280AD /* FarososApp.swift */; };
+		AB56C0300F7C60D8CB9BA5E0 /* FirebaseAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794DBDDA9AFEDCA9441042C3 /* FirebaseAuthSession.swift */; };
 		ABF8D4B290A490F6503CF494 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C4AF6ECD7B5E491F4AC22C2 /* KeychainStore.swift */; };
 		CD57315974048A5D59D62B66 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E4A356C73D0458CC4F927E /* LogEntry.swift */; };
 		DAA16E95FDC2A9E28E83BC3A /* BleScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741C4A524E7E1ED47C35CD5D /* BleScanner.swift */; };
@@ -46,6 +47,7 @@
 		6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
 		741C4A524E7E1ED47C35CD5D /* BleScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleScanner.swift; sourceTree = "<group>"; };
+		794DBDDA9AFEDCA9441042C3 /* FirebaseAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthSession.swift; sourceTree = "<group>"; };
 		7C4AF6ECD7B5E491F4AC22C2 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryMonitor.swift; sourceTree = "<group>"; };
 		9778EA3E566CA704C1D35319 /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = ..; sourceTree = SOURCE_ROOT; };
@@ -87,6 +89,7 @@
 				1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */,
 				E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */,
 				5DE73C3625A095134B1280AD /* FarososApp.swift */,
+				794DBDDA9AFEDCA9441042C3 /* FirebaseAuthSession.swift */,
 				CF02A9701D9CF6DC0A508957 /* FirebaseMeshStateUploader.swift */,
 				9CE9260BACE6294408DCEF7E /* FirebaseParticipantUploader.swift */,
 				6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */,
@@ -214,6 +217,7 @@
 				5B3AE2B40F38915E10457909 /* EmergencyView.swift in Sources */,
 				997968B4BC1608E98F72A746 /* EmergencyViewModel.swift in Sources */,
 				A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */,
+				AB56C0300F7C60D8CB9BA5E0 /* FirebaseAuthSession.swift in Sources */,
 				EB335B8B71400C1910FDF75A /* FirebaseMeshStateUploader.swift in Sources */,
 				F0BA61A4E365FC3C207C6DCE /* FirebaseParticipantUploader.swift in Sources */,
 				5D4ED6485B7956361079D49B /* KeychainDeviceIdentity.swift in Sources */,
