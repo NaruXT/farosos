@@ -1,7 +1,6 @@
 package com.farosos.codec
 
 import org.json.JSONObject
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -15,15 +14,7 @@ import kotlin.test.assertTrue
  * el contrato de bytes exacto que Swift y Kotlin deben compartir.
  */
 class VectorLoadingTest {
-    private fun repoRootDir(): File {
-        // Gradle corre los tests del módulo `:codec` con working dir = android/codec/
-        return File(System.getProperty("user.dir"), "../..").canonicalFile
-    }
-
-    private fun loadVectorsJson(): JSONObject {
-        val vectorsFile = File(repoRootDir(), "spec/test-vectors.json")
-        return JSONObject(vectorsFile.readText())
-    }
+    private fun loadVectorsJson(): JSONObject = TestVectorFile.load()
 
     private data class Vector(val name: String, val fields: JSONObject, val bytesHex: String)
 
@@ -39,14 +30,11 @@ class VectorLoadingTest {
         }
     }
 
-    private fun hexToBytes(hex: String): ByteArray =
-        ByteArray(hex.length / 2) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    private fun hexToBytes(hex: String): ByteArray = TestVectorFile.hexToBytes(hex)
 
-    private fun bytesToHex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) }
+    private fun bytesToHex(bytes: ByteArray): String = TestVectorFile.bytesToHex(bytes)
 
-    private fun hexByte(hex: String): Int =
-        hex.removePrefix("0x").toInt(16)
+    private fun hexByte(hex: String): Int = TestVectorFile.hexByte(hex)
 
     /** Construye el `BeaconPacket` esperado a partir del `fields` de un vector
      * — única fuente de la conversión JSON -> tipos, compartida por el test

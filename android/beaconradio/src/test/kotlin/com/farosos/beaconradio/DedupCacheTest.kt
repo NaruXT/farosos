@@ -15,6 +15,9 @@ class DedupCacheTest {
     private fun key(deviceByte: Int = 1, nonce: Int = 42): DedupCache.Key =
         DedupCache.Key(deviceIdHash = byteArrayOf(deviceByte.toByte(), 0, 0, 0, 0, 0), nonce = nonce)
 
+    private fun macKey(deviceByte: Int = 1, mac: ByteArray = byteArrayOf(1, 2, 3, 4)): DedupCache.Key =
+        DedupCache.Key.forMac(deviceIdHash = byteArrayOf(deviceByte.toByte(), 0, 0, 0, 0, 0), mac = mac)
+
     @Test
     fun firstInsertionIsAccepted() {
         val cache = DedupCache()
@@ -90,5 +93,35 @@ class DedupCacheTest {
 
         assertFalse(cache.insertIfAbsent(keyA), "keyA fue tocada recientemente, no debió desalojarse")
         assertTrue(cache.insertIfAbsent(keyB), "keyB fue desalojada")
+    }
+
+    // Caso B (`Versión=0x02`, clave `DeviceIdHash + MAC`, #39/#43)
+
+    @Test
+    fun sameMacForSameDeviceIsADuplicate() {
+        val cache = DedupCache()
+        val k = macKey()
+
+        assertTrue(cache.insertIfAbsent(k))
+        assertFalse(cache.insertIfAbsent(k), "el mismo beacon Caso B rebotado por varios relays debe verse como duplicado")
+    }
+
+    @Test
+    fun differentMacForSameDeviceIsNotADuplicate() {
+        val cache = DedupCache()
+        assertTrue(cache.insertIfAbsent(macKey(1, byteArrayOf(1, 2, 3, 4))))
+        assertTrue(
+            cache.insertIfAbsent(macKey(1, byteArrayOf(1, 2, 3, 5))),
+            "un beacon con contenido distinto (Timestamp avanzado) cambia el MAC y debe verse como nuevo"
+        )
+    }
+
+    @Test
+    fun macKeyAndNonceKeyWithSameDeviceNeverCollide() {
+        val cache = DedupCache()
+        // Nonce=0x0201 (LE: 01 02) vs MAC=[1,2,3,4] — ambas empiezan igual en
+        // los primeros 2 bytes, pero no deben confundirse entre sí.
+        assertTrue(cache.insertIfAbsent(DedupCache.Key(deviceIdHash = byteArrayOf(1, 0, 0, 0, 0, 0), nonce = 0x0201)))
+        assertTrue(cache.insertIfAbsent(macKey(1, byteArrayOf(1, 2, 3, 4))))
     }
 }

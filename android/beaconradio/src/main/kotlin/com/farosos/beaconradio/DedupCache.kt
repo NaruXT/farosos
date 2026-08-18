@@ -14,11 +14,33 @@ class DedupCache(
     private val ttlMillis: Long = 30 * 60 * 1000L,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
-    class Key(val deviceIdHash: ByteArray, val nonce: Int) {
-        override fun equals(other: Any?): Boolean =
-            other is Key && deviceIdHash.contentEquals(other.deviceIdHash) && nonce == other.nonce
+    /**
+     * [discriminator] distingue paquetes de un mismo dispositivo — `Nonce`
+     * (2 bytes) en el layout legado, `MAC` (4 bytes) en Caso B
+     * (`Versión=0x02`, #39/#43). Los tamaños distintos bastan para que
+     * nunca colisionen entre sí sin necesitar una marca de caso aparte.
+     */
+    class Key private constructor(val deviceIdHash: ByteArray, private val discriminator: ByteArray) {
+        constructor(deviceIdHash: ByteArray, nonce: Int) : this(
+            deviceIdHash,
+            byteArrayOf((nonce and 0xFF).toByte(), ((nonce shr 8) and 0xFF).toByte())
+        )
 
-        override fun hashCode(): Int = 31 * deviceIdHash.contentHashCode() + nonce
+        override fun equals(other: Any?): Boolean =
+            other is Key && deviceIdHash.contentEquals(other.deviceIdHash) && discriminator.contentEquals(other.discriminator)
+
+        override fun hashCode(): Int = 31 * deviceIdHash.contentHashCode() + discriminator.contentHashCode()
+
+        companion object {
+            // No es un constructor secundario `(ByteArray, ByteArray)` porque
+            // choca en JVM con el constructor privado primario de la misma
+            // forma — Kotlin no distingue overloads solo por nombre de
+            // parámetro cuando el tipo erasure es idéntico.
+            fun forMac(deviceIdHash: ByteArray, mac: ByteArray): Key {
+                require(mac.size == 4) { "mac debe medir 4 bytes" }
+                return Key(deviceIdHash, mac)
+            }
+        }
     }
 
     private val insertedAt = LinkedHashMap<Key, Long>() // orden de inserción/toque = orden LRU
