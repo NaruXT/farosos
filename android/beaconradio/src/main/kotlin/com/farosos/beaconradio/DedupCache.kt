@@ -17,8 +17,9 @@ class DedupCache(
     /**
      * [discriminator] distingue paquetes de un mismo dispositivo — `Nonce`
      * (2 bytes) en el layout legado, `MAC` (4 bytes) en Caso B
-     * (`Versión=0x02`, #39/#43). Los tamaños distintos bastan para que
-     * nunca colisionen entre sí sin necesitar una marca de caso aparte.
+     * (`Versión=0x02`, #39/#43), `FragHeader` (1 byte) en `FRAGMENTO_FIRMA`
+     * (Caso A, #45). Los tamaños distintos bastan para que nunca colisionen
+     * entre sí sin necesitar una marca de caso aparte.
      */
     class Key private constructor(val deviceIdHash: ByteArray, private val discriminator: ByteArray) {
         constructor(deviceIdHash: ByteArray, nonce: Int) : this(
@@ -32,14 +33,28 @@ class DedupCache(
         override fun hashCode(): Int = 31 * deviceIdHash.contentHashCode() + discriminator.contentHashCode()
 
         companion object {
-            // No es un constructor secundario `(ByteArray, ByteArray)` porque
-            // choca en JVM con el constructor privado primario de la misma
-            // forma — Kotlin no distingue overloads solo por nombre de
-            // parámetro cuando el tipo erasure es idéntico.
+            // No son constructores secundarios porque chocan en JVM con
+            // constructores ya existentes de la misma forma erasada —
+            // Kotlin no distingue overloads solo por nombre de parámetro
+            // cuando el tipo erasure es idéntico (`forMac`/`ByteArray` choca
+            // con el constructor privado primario; `forFragHeader`/`Int`
+            // chocaría con el constructor de `nonce`).
             fun forMac(deviceIdHash: ByteArray, mac: ByteArray): Key {
                 require(mac.size == 4) { "mac debe medir 4 bytes" }
                 return Key(deviceIdHash, mac)
             }
+
+            /**
+             * [fragHeader] = byte `FragHeader` del fragmento (nibble
+             * alto=índice, nibble bajo=conteo) — dos fragmentos distintos
+             * del mismo dispositivo (índices distintos) dan claves
+             * distintas, así que los 7 fragmentos de una identidad conviven
+             * en el cache sin deduplicarse entre sí; una retransmisión del
+             * mismo fragmento sí se deduplica (ver `spec/packet-format.md`,
+             * sección `FRAGMENTO_FIRMA`).
+             */
+            fun forFragHeader(deviceIdHash: ByteArray, fragHeader: Int): Key =
+                Key(deviceIdHash, byteArrayOf((fragHeader and 0xFF).toByte()))
         }
     }
 

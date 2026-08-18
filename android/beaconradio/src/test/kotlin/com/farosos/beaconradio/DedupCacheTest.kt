@@ -124,4 +124,36 @@ class DedupCacheTest {
         assertTrue(cache.insertIfAbsent(DedupCache.Key(deviceIdHash = byteArrayOf(1, 0, 0, 0, 0, 0), nonce = 0x0201)))
         assertTrue(cache.insertIfAbsent(macKey(1, byteArrayOf(1, 2, 3, 4))))
     }
+
+    // Caso A (`FRAGMENTO_FIRMA`, clave `DeviceIdHash + FragHeader`, #44/#45)
+
+    private fun fragHeaderKey(deviceByte: Int = 1, fragHeader: Int): DedupCache.Key =
+        DedupCache.Key.forFragHeader(deviceIdHash = byteArrayOf(deviceByte.toByte(), 0, 0, 0, 0, 0), fragHeader = fragHeader)
+
+    @Test
+    fun sameFragmentRetransmittedIsADuplicate() {
+        val cache = DedupCache()
+        val k = fragHeaderKey(1, fragHeader = 0x07) // índice=0, conteo=7
+
+        assertTrue(cache.insertIfAbsent(k))
+        assertFalse(cache.insertIfAbsent(k), "el mismo fragmento rebotado por varios relays debe verse como duplicado")
+    }
+
+    @Test
+    fun differentFragmentIndexOfSameDeviceIsNotADuplicate() {
+        val cache = DedupCache()
+        assertTrue(cache.insertIfAbsent(fragHeaderKey(1, fragHeader = 0x07))) // índice=0
+        assertTrue(
+            cache.insertIfAbsent(fragHeaderKey(1, fragHeader = 0x17)), // índice=1
+            "los 7 fragmentos de una misma identidad deben convivir en el cache, no deduplicarse entre sí"
+        )
+    }
+
+    @Test
+    fun fragHeaderKeyNeverCollidesWithNonceOrMacKeyOfSameDevice() {
+        val cache = DedupCache()
+        assertTrue(cache.insertIfAbsent(DedupCache.Key(deviceIdHash = byteArrayOf(1, 0, 0, 0, 0, 0), nonce = 0x0007)))
+        assertTrue(cache.insertIfAbsent(macKey(1, byteArrayOf(0, 0, 0, 7))))
+        assertTrue(cache.insertIfAbsent(fragHeaderKey(1, fragHeader = 0x07)))
+    }
 }
