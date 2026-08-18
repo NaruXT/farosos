@@ -10,8 +10,9 @@ import Foundation
 public final class DedupCache {
     /// `discriminator` distingue paquetes de un mismo dispositivo — `Nonce`
     /// (2 bytes) en el layout legado, `MAC` (4 bytes) en Caso B
-    /// (`Versión=0x02`, #39/#42). Los tamaños distintos bastan para que
-    /// nunca colisionen entre sí sin necesitar una marca de caso aparte.
+    /// (`Versión=0x02`, #39/#42), `FragHeader` (1 byte) en `FRAGMENTO_FIRMA`
+    /// (Caso A, #44). Los tamaños distintos bastan para que nunca colisionen
+    /// entre sí sin necesitar una marca de caso aparte.
     public struct Key: Hashable {
         public let deviceIdHash: Data
         private let discriminator: Data
@@ -25,6 +26,18 @@ public final class DedupCache {
             precondition(mac.count == 4, "mac debe medir 4 bytes")
             self.deviceIdHash = deviceIdHash
             self.discriminator = mac
+        }
+
+        /// `fragHeader` = byte `FragHeader` del fragmento (nibble
+        /// alto=índice, nibble bajo=conteo) — dos fragmentos distintos del
+        /// mismo dispositivo (índices distintos) dan claves distintas, así
+        /// que los 7 fragmentos de una identidad conviven en el cache sin
+        /// deduplicarse entre sí; una retransmisión del mismo fragmento sí
+        /// se deduplica (ver `spec/packet-format.md`, sección
+        /// `FRAGMENTO_FIRMA`).
+        public init(deviceIdHash: Data, fragHeader: UInt8) {
+            self.deviceIdHash = deviceIdHash
+            self.discriminator = Data([fragHeader])
         }
     }
 

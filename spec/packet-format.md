@@ -40,9 +40,81 @@ layout — un dispositivo que nunca tuvo conectividad fragmenta su clave
 pública Ed25519 + firma a través de varios beacons `FRAGMENTO_FIRMA`
 consecutivos, verificables localmente por cualquier relay que junte
 suficientes fragmentos, sin backend ni conexión (#38, Caso A). El framing
-exacto a nivel de bytes (índice de fragmento, conteo total, cuántos bytes de
-clave/firma por fragmento) **no está definido todavía** — queda para la
-ticket de implementación de Caso A (#44/#45), fuera de alcance de #39.
+exacto de bytes se resolvió en la sesión de `/grilling` sobre #44
+(2026-08-18) — ver la sección siguiente.
+
+### `FRAGMENTO_FIRMA` (`Versión=0x01`, `Tipo=3`, Caso A)
+
+Reusa el mismo envoltorio de 26 bytes del layout legado. Los offsets 3-8
+(`Device ID hash`) no cambian de significado; los offsets 9-25 (17 bytes
+antes ocupados por `Estado`, `Latitud`, `Longitud`, `Timestamp`, `Nonce`,
+`Secuencia`) se reasignan por completo — un fragmento no lleva estado ni
+ubicación, solo un trozo de la identidad del dispositivo.
+
+Todos los campos multi-byte son **little-endian**.
+
+| Offset | Campo          | Tamaño | Tipo         | Descripción                                                                 |
+| ------ | -------------- | ------ | ------------ | ----------------------------------------------------------------------------- |
+| 0      | Magic          | 1      | `uint8`      | `0xE7` fijo, igual que el resto del layout legado                             |
+| 1      | Versión        | 1      | `uint8`      | `0x01`                                                                         |
+| 2      | Tipo de mensaje | 1     | `uint8`      | `3` (`FRAGMENTO_FIRMA`)                                                        |
+| 3      | Device ID hash | 6      | bytes crudos | igual que el resto del layout legado — identifica a quién pertenece el fragmento |
+| 9      | TTL / saltos   | 1      | `uint8`      | misma semántica que el resto del layout legado — un fragmento participa del mismo mecanismo de relay que cualquier otro paquete |
+| 10     | FragHeader     | 1      | `uint8`      | nibble alto = índice de fragmento (0-6), nibble bajo = conteo total de fragmentos (siempre 7) |
+| 11     | Payload        | 15     | bytes crudos | trozo de `pubkey Ed25519 (32B) \|\| firma Ed25519 (64B)` — ver abajo           |
+
+**Total: 26 bytes**, igual que el resto del layout legado.
+
+**Payload**: `pubkey Ed25519 (32 bytes) || firma Ed25519 (64 bytes)` = 96
+bytes, concatenados sin tratamiento especial y cortados en **7 fragmentos**
+de 15 bytes cada uno (`ceil(96 / 15) = 7`). El 7º fragmento (índice 6) trae
+solo 6 bytes reales — los 9 bytes restantes del payload de 15 se rellenan
+con ceros, sin ningún campo de longitud aparte: el receptor ya sabe que
+pubkey+firma miden siempre 96 bytes fijos (Ed25519 no cambia de tamaño), así
+que el índice 6 solo aporta sus primeros 6 bytes al buffer reensamblado.
+
+Empacar índice+conteo en un solo byte (`FragHeader`, mismo patrón que
+`TipoEstado` en Caso B) en vez de 2 bytes separados es estrictamente mejor:
+la cantidad de fragmentos (7) la determina el tamaño fijo a fragmentar (96
+bytes), no la codificación del header, así que separarlos no gana nada y
+cuesta un byte entero de payload. 4 bits (máx. 15) sobra de sobra sobre los
+7 fragmentos reales que hacen falta.
+
+**Qué firma la clave privada Ed25519**: `firma = Ed25519_Sign(privkey,
+pubkey)` — el dispositivo firma su propia clave pública, un autocertificado
+que prueba posesión de la identidad. No se firma ningún otro contenido del
+beacon: la firma prueba que la identidad es real, **no autentica el
+contenido de cada beacon individual** — a diferencia del MAC de Caso B, que
+sí ata la autenticación al contenido exacto de cada emisión. Un artefacto
+estático (calculado una sola vez en #40/#41, no recalculado por beacon) no
+puede hacer más que eso; autenticar contenido por beacon exigiría
+recalcular y refragmentar 96 bytes en cada cambio de estado (~7 emisiones
+extra), descartado por el costo de ancho de banda de la malla.
+
+**Límite aceptado**: un atacante físicamente presente en el rango BLE de un
+dispositivo Caso A podría capturar sus fragmentos y reemitir beacons
+`BEACON` falsos bajo esa misma identidad (ubicación falsa, o `Estado=OK`
+falso silenciando una emergencia real) — ese beacon falso pasaría la
+verificación local de identidad sin problema. Decisión explícita: no se
+cierra este hueco (ver `spec/test-vectors.json`, clave `fragmento_firma`,
+para los vectores de prueba). Consecuencia: el Panel de rescate marca
+**todo** beacon Caso A como "no verificado, requiere validación humana" de
+forma permanente — nunca llega a un estado "verificado" como sí puede Caso
+B (ver #52/#53/#54 para el mecanismo que sube la confirmación de identidad,
+sin autenticar contenido, hacia el panel).
+
+**Dedup**: clave `DeviceIdHash + FragHeader` (no hay campo `Nonce`
+disponible en este layout reasignado). Funciona porque la identidad Ed25519
+se genera una sola vez al instalar (#40/#41) — el contenido del fragmento de
+índice `i` de un dispositivo dado es constante mientras no se reinstale; una
+reinstalación genera un `device_id_hash` nuevo (deriva de la pubkey,
+decisión 17), sin colisión con el cache viejo.
+
+**Retransmisión**: un fragmento recibido pero aún no verificable (faltan
+otros fragmentos del mismo `device_id_hash`) nunca bloquea su propia
+retransmisión ni se descarta por "no verificado todavía" — el TTL/dedup de
+arriba sigue siendo el único criterio de descarte, igual que cualquier otro
+paquete del layout legado.
 
 ### Envoltorio BLE (Manufacturer Specific Data, AD type 0xFF)
 
@@ -167,7 +239,9 @@ Fase 1 usa un LRU simple, sin esta priorización (ver decisión 9 abajo).
 ## Deduplicación
 
 Clave: `DeviceIDHash + Nonce` para paquetes `Versión=0x01` (legado, sin
-cambios). Para paquetes `Versión=0x02` (Caso B): `DeviceIDHash + MAC` — sigue
+cambios), excepto `FRAGMENTO_FIRMA` (`Tipo=3`), que usa `DeviceIDHash +
+FragHeader` — ver la sección de `FRAGMENTO_FIRMA` arriba. Para paquetes
+`Versión=0x02` (Caso B): `DeviceIDHash + MAC` — sigue
 funcionando igual porque `MAC` incluye `Timestamp` en su entrada, así que
 cambia en cada emisión nueva aunque el `Estado` no haya cambiado (ver
 decisión 15). Caché con expiración de ~30 min, tope LRU de 500 entradas por
@@ -200,6 +274,7 @@ porque no son derivables del código ni de la tabla original.
 15. **Caso B: MAC simétrico post-registro (ECDH + HMAC), no cadena de hashes/TESLA**. Se evaluó un esquema estilo S/KEY + TESLA (Perrig et al.) y se descartó porque su disclosure delay depende de una cota de latencia de red indeterminable en una malla BLE de desastre real (relays intermitentes, TTL de hasta 16 saltos) — ver `docs/research/beacon-auth-prior-art.md`. El MAC (`HMAC-SHA256(K_shared, contenido)[:4]`) ata la autenticación al contenido exacto, sin retraso de revelación ni sincronización de tiempo. Los 4 bytes del `MAC` en el layout de Caso B salen de: 2 bytes que ocupaba `Nonce` (absorbido íntegro en el MAC), 1 byte de margen del envoltorio que el layout legado nunca usó (31−30), y 1 byte liberado al empaquetar `Tipo`+`Estado` en un solo byte (ambos usaban ≤5 de 256 valores posibles). Se evaluó recortar `Device ID hash` para ganar más espacio y se descartó — a escala nacional (~10M dispositivos) da ~16% de probabilidad de colisión con 48 bits, ya al límite razonable.
 16. **`TipoEstado` empaquetado en nibbles (Caso B)**: nibble alto = `Tipo de mensaje`, nibble bajo = `Estado`. Ambos enums usan pocos valores (≤5 de 256), así que comparten un solo byte en vez de dos — parte del presupuesto de bytes de la decisión 15. Hoy el nibble de `Tipo` solo toma el valor `0` (`BEACON`) en la práctica: `GATEWAY_ANNOUNCE`/`ACK_RECEIVED` quedan exclusivamente en el layout legado (#38), sin cambios.
 17. **`device_id_hash` deriva de la clave pública Ed25519, no del UUID de instalación** (#38). Mismo mecanismo (`SHA-256(...)`) y mismo largo (6 bytes) — solo cambia el material de entrada, ahora estable y verificable criptográficamente en vez de un UUID arbitrario. Caso B (`Versión=0x02`) usa esta fórmula desde el día uno, porque requiere la identidad Ed25519 por construcción (#42/#43 dependen de #40/#41). El layout legado (`Versión=0x01`, Caso A incluido) sigue en UUID (decisión 6) hasta que #40/#41 implementen la identidad — a partir de ahí ambos layouts quedan en la misma fórmula. Migración de dispositivos ya provisionados con `device_id_hash` basado en UUID: sin resolver, señalado explícitamente como hueco abierto en el spec de #38 ("Further Notes").
+18. **`FRAGMENTO_FIRMA` (Caso A): firma estática de autocertificado, no autenticación por beacon** (#38/#44, sesión de `/grilling` 2026-08-18). `firma = Ed25519_Sign(privkey, pubkey)` — el dispositivo firma su propia clave pública una sola vez (calculada junto con la identidad en #40/#41, no recalculada por beacon). Se evaluó firmar algo más (p. ej. el contenido de cada beacon) y se descartó: exigiría recalcular y refragmentar 96 bytes en cada cambio de estado, ~7 emisiones extra por cambio — inviable con el presupuesto de ancho de banda de la malla (decisión 9, round-robin ~1s/paquete). Consecuencia aceptada explícitamente: la firma prueba que la identidad es real, nunca autentica el contenido de un beacon específico — un atacante físicamente presente en el rango BLE de la víctima podría capturar sus fragmentos y reemitir beacons falsos bajo esa misma identidad. Mitigado en la práctica por exigir presencia física del atacante (no es un ataque remoto) y por la marca permanente "no verificado, requiere validación humana" que el Panel de rescate aplica a todo beacon Caso A (#54). Ver #52/#53 para el mecanismo que sube la confirmación de identidad (sin autenticar contenido) hacia el panel.
 
 ## Criterio de éxito de Fase 1
 

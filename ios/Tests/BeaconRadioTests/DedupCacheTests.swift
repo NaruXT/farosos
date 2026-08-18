@@ -111,4 +111,31 @@ final class DedupCacheTests: XCTestCase {
         XCTAssertTrue(cache.insertIfAbsent(DedupCache.Key(deviceIdHash: Data([1, 0, 0, 0, 0, 0]), nonce: 0x0201)))
         XCTAssertTrue(cache.insertIfAbsent(makeMacKey(1, mac: [1, 2, 3, 4])))
     }
+
+    private func makeFragHeaderKey(_ deviceByte: UInt8 = 1, fragHeader: UInt8) -> DedupCache.Key {
+        DedupCache.Key(deviceIdHash: Data([deviceByte, 0, 0, 0, 0, 0]), fragHeader: fragHeader)
+    }
+
+    func testSameFragmentRetransmittedIsADuplicate() {
+        let cache = DedupCache()
+        let key = makeFragHeaderKey(1, fragHeader: 0x07) // índice=0, conteo=7
+        XCTAssertTrue(cache.insertIfAbsent(key))
+        XCTAssertFalse(cache.insertIfAbsent(key), "el mismo fragmento rebotado por varios relays debe verse como duplicado")
+    }
+
+    func testDifferentFragmentIndexOfSameDeviceIsNotADuplicate() {
+        let cache = DedupCache()
+        XCTAssertTrue(cache.insertIfAbsent(makeFragHeaderKey(1, fragHeader: 0x07))) // índice=0
+        XCTAssertTrue(
+            cache.insertIfAbsent(makeFragHeaderKey(1, fragHeader: 0x17)), // índice=1
+            "los 7 fragmentos de una misma identidad deben convivir en el cache, no deduplicarse entre sí"
+        )
+    }
+
+    func testFragHeaderKeyNeverCollidesWithNonceOrMacKeyOfSameDevice() {
+        let cache = DedupCache()
+        XCTAssertTrue(cache.insertIfAbsent(DedupCache.Key(deviceIdHash: Data([1, 0, 0, 0, 0, 0]), nonce: 0x0007)))
+        XCTAssertTrue(cache.insertIfAbsent(makeMacKey(1, mac: [0, 0, 0, 7])))
+        XCTAssertTrue(cache.insertIfAbsent(makeFragHeaderKey(1, fragHeader: 0x07)))
+    }
 }
