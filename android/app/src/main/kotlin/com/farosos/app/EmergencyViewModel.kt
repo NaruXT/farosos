@@ -10,11 +10,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.farosos.beaconradio.DedupCache
 import com.farosos.beaconradio.GatewayUploader
+import com.farosos.beaconradio.IdentityConfirmationUploader
 import com.farosos.beaconradio.LocalBeaconFactory
 import com.farosos.beaconradio.MeshStateRegistry
 import com.farosos.beaconradio.RandomNonceGenerator
 import com.farosos.beaconradio.RelayPolicy
 import com.farosos.beaconradio.RelayQueue
+import com.farosos.beaconradio.VerifiedIdentityRegistry
 import com.farosos.codec.BeaconPacketCodec
 import com.farosos.networkrole.NetworkRole
 import com.farosos.networkrole.NetworkRoleMachine
@@ -78,6 +80,18 @@ class EmergencyViewModel @JvmOverloads constructor(
     )
     private val meshStateRegistry = MeshStateRegistry()
     private val gatewayUploader = GatewayUploader(meshStateRegistry, FirebaseMeshStateUploader())
+    // Caso A (#53): `verifiedIdentityRegistry.record(_)` todavía no lo llama
+    // nada — ninguna ticket de Fase 4 conectó todavía la verificación local
+    // de fragmentos (`SignatureFragmentAssembler`, #45) a la recepción real
+    // de paquetes BLE (`handleReceivedPacketData` solo decodifica
+    // `BeaconPacket`, layout legado Tipo=0-2, hoy). Instanciar el assembler
+    // acá antes de que exista esa fuente real sería código muerto
+    // (Speculative Generality) — a diferencia de `identityConfirmationUploader`,
+    // que sí está atado a una señal real que ya funciona (`GATEWAY_ACTIVO`).
+    // Cuando una ticket futura resuelva ese dispatch, le toca a ella también
+    // instanciar el assembler y conectar `onIdentityVerified` acá.
+    private val verifiedIdentityRegistry = VerifiedIdentityRegistry()
+    private val identityConfirmationUploader = IdentityConfirmationUploader(verifiedIdentityRegistry, FirebaseIdentityConfirmationUploader())
     private var radioStarted = false
     private var isForeground = false
 
@@ -115,6 +129,7 @@ class EmergencyViewModel @JvmOverloads constructor(
      */
     private fun wireNetworkMonitors() {
         gatewayUploader.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error.message ?: error.toString())) }
+        identityConfirmationUploader.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error.message ?: error.toString())) }
         batteryMonitor.onBatteryChanged = onMain { reading ->
             networkMachine.updateBattery(percent = reading.percent, isCharging = reading.isCharging)
         }
@@ -141,9 +156,11 @@ class EmergencyViewModel @JvmOverloads constructor(
         if (newRole == NetworkRole.GATEWAY_ACTIVO) {
             refreshGatewayAnnouncement()
             gatewayUploader.start()
+            identityConfirmationUploader.start()
         } else {
             relayQueue.clearGatewayAnnouncement()
             gatewayUploader.stop()
+            identityConfirmationUploader.stop()
         }
     }
 
