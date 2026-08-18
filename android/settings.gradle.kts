@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 rootProject.name = "farosos-android"
 
 include(":codec")
+include(":deviceidentity")
 include(":personstate")
 include(":networkrole")
 include(":beaconradio")

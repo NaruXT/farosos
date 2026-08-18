@@ -41,7 +41,13 @@ dependencies {
     implementation(project(":networkrole"))
     implementation(project(":beaconradio"))
     implementation(project(":participantregistration"))
+    implementation(project(":deviceidentity"))
     implementation("androidx.security:security-crypto:1.1.0")
+    // Ed25519 no está disponible de forma confiable vía java.security en
+    // Android (ni el provider de plataforma ni Play Services lo agregan;
+    // AndroidKeyStore lo soporta recién desde API 33, y solo con backing de
+    // hardware) — BouncyCastle lo implementa en software para todo minSdk 26+.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 
     implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-auth")
