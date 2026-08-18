@@ -19,6 +19,23 @@ para el porqué de cada decisión.
 - `scripts/verify-dedup.mjs`: mismo chequeo de deduplicación, pero contra el
   proyecto real vía Admin SDK — correlo una vez que el proyecto exista y las
   reglas estén desplegadas (ver abajo).
+- `scripts/generate-beacon-auth-vectors.mjs` (#39): genera el keypair ECDH
+  (X25519) del backend la primera vez que corre (lo persiste en
+  `secrets/ecdh-backend-keypair.json`, gitignored) y los vectores de prueba
+  de Caso B (round-trip `Versión=0x02`, `device_id_hash` desde pubkey, ECDH,
+  MAC) que ya viven fusionados en `spec/test-vectors.json`. `npm run
+  generate-beacon-auth-vectors` para regenerarlos si el spec cambia — no
+  rota el keypair del backend si `secrets/ecdh-backend-keypair.json` ya
+  existe. **Este keypair es un PROTOTIPO determinístico** (seed fija, ver el
+  propio script) — no entropía real — porque hoy no hay ningún backend real
+  que lo use (#48, la Cloud Function de verificación, no está implementada
+  todavía). Por eso la clave pública se puede commitear en
+  `spec/test-vectors.json` con confianza aunque `secrets/` nunca viaje con
+  git: cualquier clon reproduce el mismo keypair. **Cuando #48 despliegue la
+  Cloud Function real, esa ticket debe generar un keypair nuevo con
+  `randomBytes()` real y custodia en Firebase Secret Manager** — no seguir
+  usando este determinístico ni asumir que `secrets/ecdh-backend-keypair.json`
+  de esta máquina es la clave de producción.
 
 ## Lo que falta — requiere tu cuenta real de Firebase, no lo puedo hacer yo
 

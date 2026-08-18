@@ -88,5 +88,200 @@
       },
       "bytes_hex": "e701000102030405ff010000000000000000d0f85365000100ff"
     }
+  ],
+  "case_b": {
+    "$comment": "Layout Versión=0x02 (Caso B, #38/#39). Offsets en spec/packet-format.md. message_type/status son los mismos enums MessageType/Status del layout legado — se empaquetan en un byte (TipoEstado: nibble alto=message_type, nibble bajo=status) solo en este layout. Generados con backend/scripts/generate-beacon-auth-vectors.mjs (implementación independiente del codec de cualquier plataforma, igual que los vectores legado de arriba).",
+    "version": 2,
+    "packet_size_bytes": 27,
+    "field_order": [
+      "magic",
+      "version",
+      "tipo_estado",
+      "device_id_hash",
+      "latitude_e7",
+      "longitude_e7",
+      "timestamp",
+      "ttl",
+      "mac",
+      "sequence"
+    ],
+    "vectors": [
+      {
+        "name": "caso_b_estado_sin_confirmar",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 0,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": 194326000,
+          "longitude_e7": -991332000,
+          "timestamp": 1700010000,
+          "ttl": 16,
+          "mac": "fe6d1b68",
+          "sequence": 0
+        },
+        "bytes_hex": "e702001dcfc6d36638f02d950b6079e9c41018546510fe6d1b6800",
+        "content_hex": "1dcfc6d3663800f02d950b6079e9c4101854651000"
+      },
+      {
+        "name": "caso_b_estado_ok",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 1,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": 405000000,
+          "longitude_e7": -740000000,
+          "timestamp": 1700010500,
+          "ttl": 12,
+          "mac": "9c7d8baf",
+          "sequence": 1
+        },
+        "bytes_hex": "e702011dcfc6d3663840cf2318007fe4d3041a54650c9c7d8baf01",
+        "content_hex": "1dcfc6d366380140cf2318007fe4d3041a54650c01"
+      },
+      {
+        "name": "caso_b_estado_ayuda",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 2,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": -334489000,
+          "longitude_e7": -707679000,
+          "timestamp": 1700011000,
+          "ttl": 9,
+          "mac": "65cfca71",
+          "sequence": 2
+        },
+        "bytes_hex": "e702021dcfc6d36638581a10ece8acd1d5f81b54650965cfca7102",
+        "content_hex": "1dcfc6d3663802581a10ece8acd1d5f81b54650902"
+      },
+      {
+        "name": "caso_b_estado_silencio_timeout",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 3,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": -122419000,
+          "longitude_e7": -709320000,
+          "timestamp": 1700011500,
+          "ttl": 3,
+          "mac": "a6a52574",
+          "sequence": 3
+        },
+        "bytes_hex": "e702031dcfc6d36638c808b4f8c0a2b8d5ec1d546503a6a5257403",
+        "content_hex": "1dcfc6d3663803c808b4f8c0a2b8d5ec1d54650303"
+      },
+      {
+        "name": "caso_b_estado_gateway_disponible",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 4,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": 65000000,
+          "longitude_e7": -785000000,
+          "timestamp": 1700012000,
+          "ttl": 16,
+          "mac": "3f7d0417",
+          "sequence": 0
+        },
+        "bytes_hex": "e702041dcfc6d3663840d2df03c0d935d1e01f5465103f7d041700",
+        "content_hex": "1dcfc6d366380440d2df03c0d935d1e01f54651000"
+      },
+      {
+        "name": "caso_b_edge_ttl_secuencia_limite",
+        "fields": {
+          "magic": "0xE7",
+          "version": 2,
+          "message_type": 0,
+          "status": 1,
+          "device_id_hash": "1dcfc6d36638",
+          "latitude_e7": 0,
+          "longitude_e7": 0,
+          "timestamp": 1700012500,
+          "ttl": 0,
+          "mac": "570b7303",
+          "sequence": 255
+        },
+        "bytes_hex": "e702011dcfc6d366380000000000000000d421546500570b7303ff",
+        "content_hex": "1dcfc6d36638010000000000000000d421546500ff"
+      }
+    ]
+  },
+  "device_id_hash_vectors": [
+    {
+      "name": "device_id_hash_desde_pubkey_ed25519",
+      "$comment": "device_id_hash = SHA-256(clave pública Ed25519)[:6] — reemplaza SHA-256(UUID)[:6] (ver #38, #40/#41).",
+      "public_key_ed25519_hex": "d5c45ed254fff5bce528e99ad03eebb024cd8beb40b027723c451ca0f36cee93",
+      "device_id_hash": "1dcfc6d36638"
+    }
+  ],
+  "ecdh": {
+    "$comment": "K_shared = X25519(privkey_dispositivo_convertida, pubkey_X25519_backend). La privkey/pubkey Ed25519 del dispositivo se convierten a X25519 vía el mapa birracional estándar (equivalente a crypto_sign_ed25519_sk_to_curve25519/_pk_to_curve25519 de libsodium) — no es un keypair X25519 aparte. backend_public_key_x25519_hex es la constante real que ambas apps deben embeber. Es un keypair PROTOTIPO derivado determinísticamente (ver backend/scripts/generate-beacon-auth-vectors.mjs) porque hoy no hay ningún backend real que lo use (#48 aún no existe) — cuando #48 despliegue la Cloud Function real, ESA ticket debe generar un keypair con entropía real y custodia en Firebase Secret Manager, reemplazando esta constante.",
+    "backend_public_key_x25519_hex": "78e77e1217a3c67319601127b85dc55fe714a23f11e0d22b25d4188c1255963b",
+    "vectors": [
+      {
+        "name": "ecdh_dispositivo_prueba_contra_backend",
+        "device_secret_key_ed25519_hex": "b2b202a10189d5c25ebbc89a7217df6e70a85fbbcea98df1081952d172045843",
+        "device_public_key_ed25519_hex": "d5c45ed254fff5bce528e99ad03eebb024cd8beb40b027723c451ca0f36cee93",
+        "$comment_x25519": "device_secret_key_x25519_hex/device_public_key_x25519_hex son la conversión Ed25519->X25519 ya aplicada (ver campo ecdh.$comment) — se publican en claro porque esta es una identidad de PRUEBA, no un dispositivo real. Permiten verificar K_shared con crypto nativo (X25519 puro) sin depender de @noble/curves ni reimplementar la conversión.",
+        "device_secret_key_x25519_hex": "d80d562f516faaf351cc0c6f2b3285702be8a43e56b8459c22c9205cc46e4a70",
+        "device_public_key_x25519_hex": "c9f3e03d8a28e11296cc7ba6c7c841d9038e5dcf860f67106863b1be111b177b",
+        "backend_public_key_x25519_hex": "78e77e1217a3c67319601127b85dc55fe714a23f11e0d22b25d4188c1255963b",
+        "expected_k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050"
+      }
+    ]
+  },
+  "mac_vectors": [
+    {
+      "name": "mac_caso_b_estado_sin_confirmar",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d3663800f02d950b6079e9c4101854651000",
+      "expected_mac_hex": "fe6d1b68"
+    },
+    {
+      "name": "mac_caso_b_estado_ok",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d366380140cf2318007fe4d3041a54650c01",
+      "expected_mac_hex": "9c7d8baf"
+    },
+    {
+      "name": "mac_caso_b_estado_ayuda",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d3663802581a10ece8acd1d5f81b54650902",
+      "expected_mac_hex": "65cfca71"
+    },
+    {
+      "name": "mac_caso_b_estado_silencio_timeout",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d3663803c808b4f8c0a2b8d5ec1d54650303",
+      "expected_mac_hex": "a6a52574"
+    },
+    {
+      "name": "mac_caso_b_estado_gateway_disponible",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d366380440d2df03c0d935d1e01f54651000",
+      "expected_mac_hex": "3f7d0417"
+    },
+    {
+      "name": "mac_caso_b_edge_ttl_secuencia_limite",
+      "$comment": "content_hex = concatenación de (device_id_hash, tipo_estado, latitud, longitud, timestamp, ttl, secuencia) — ver spec/packet-format.md.",
+      "k_shared_hex": "4f218cc7028f81bea5df5ab62d1d1977bfd8e8bfce16d088c96df471b2ebc050",
+      "content_hex": "1dcfc6d36638010000000000000000d421546500ff",
+      "expected_mac_hex": "570b7303"
+    }
   ]
 }
