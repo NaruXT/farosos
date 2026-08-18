@@ -7,37 +7,16 @@ import XCTest
 /// plataforma). Un round-trip aislado por plataforma no alcanza — esto valida
 /// el contrato de bytes exacto que Swift y Kotlin deben compartir.
 final class VectorLoadingTests: XCTestCase {
-    private func repoRootURL() -> URL {
-        // #filePath = .../ios/Tests/PacketCodecTests/VectorLoadingTests.swift
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // quita VectorLoadingTests.swift -> PacketCodecTests/
-            .deletingLastPathComponent() // quita PacketCodecTests/ -> Tests/
-            .deletingLastPathComponent() // quita Tests/ -> ios/
-            .deletingLastPathComponent() // quita ios/ -> raíz del repo
-    }
-
     private func loadVectorsJSON() throws -> [String: Any] {
-        let vectorsURL = repoRootURL()
-            .appendingPathComponent("spec")
-            .appendingPathComponent("test-vectors.json")
-        let data = try Data(contentsOf: vectorsURL)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        try TestVectorFile.load()
     }
 
     private func hexToData(_ hex: String) -> Data {
-        var data = Data(capacity: hex.count / 2)
-        var index = hex.startIndex
-        while index < hex.endIndex {
-            let next = hex.index(index, offsetBy: 2)
-            data.append(UInt8(hex[index..<next], radix: 16)!)
-            index = next
-        }
-        return data
+        TestVectorFile.hexToData(hex)
     }
 
     private func hexByte(_ hex: String) -> UInt8 {
-        let digits = hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
-        return UInt8(digits, radix: 16)!
+        TestVectorFile.hexByte(hex)
     }
 
     /// Construye el `BeaconPacket` esperado a partir del diccionario `fields`

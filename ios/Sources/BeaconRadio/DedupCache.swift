@@ -8,13 +8,23 @@ import Foundation
 /// cualquier otro duplicado — no hay una ruta de código especial para "es
 /// mío".
 public final class DedupCache {
+    /// `discriminator` distingue paquetes de un mismo dispositivo — `Nonce`
+    /// (2 bytes) en el layout legado, `MAC` (4 bytes) en Caso B
+    /// (`Versión=0x02`, #39/#42). Los tamaños distintos bastan para que
+    /// nunca colisionen entre sí sin necesitar una marca de caso aparte.
     public struct Key: Hashable {
         public let deviceIdHash: Data
-        public let nonce: UInt16
+        private let discriminator: Data
 
         public init(deviceIdHash: Data, nonce: UInt16) {
             self.deviceIdHash = deviceIdHash
-            self.nonce = nonce
+            self.discriminator = Data([UInt8(nonce & 0xFF), UInt8((nonce >> 8) & 0xFF)])
+        }
+
+        public init(deviceIdHash: Data, mac: Data) {
+            precondition(mac.count == 4, "mac debe medir 4 bytes")
+            self.deviceIdHash = deviceIdHash
+            self.discriminator = mac
         }
     }
 

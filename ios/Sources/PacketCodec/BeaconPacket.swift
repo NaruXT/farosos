@@ -117,8 +117,9 @@ public enum BeaconPacketCodec {
 
 /// Lectura/escritura little-endian manual (en vez de `loadUnaligned`) para no
 /// requerir alineación de memoria ni una versión mínima de iOS más nueva que
-/// la que ya declara `Package.swift`.
-private extension Data {
+/// la que ya declara `Package.swift`. `internal` (no `private`) porque
+/// `CaseBBeaconPacket.swift` (mismo módulo) también las necesita.
+extension Data {
     mutating func appendLE(_ value: UInt16) {
         append(UInt8(value & 0xFF))
         append(UInt8((value >> 8) & 0xFF))
