@@ -26,6 +26,27 @@ service cloud.firestore {
       return docId == data.device_id_hash;
     }
 
+    // Campos que esta escritura agrega/cambia respecto al documento previo
+    // — `resource` es `null` en un `create` (no hay documento previo), así
+    // que se compara contra un mapa vacío en ese caso (todos los campos
+    // entrantes cuentan como "afectados").
+    function affectedParticipantKeys() {
+      return request.resource.data.diff(resource != null ? resource.data : {}).affectedKeys();
+    }
+
+    // Registro opt-in de la propia identidad (ADR-0003, #29/#30):
+    // `device_id_hash` + `name` + `contacto` opcional.
+    function isSelfRegistrationWrite() {
+      return affectedParticipantKeys().hasOnly(['device_id_hash', 'name', 'contacto']);
+    }
+
+    // Confirmación de identidad Caso A subida por un gateway ajeno (#44/#45,
+    // #52/#53) — nunca puede tocar `name`/`contacto` de un documento que no
+    // es el propio, a diferencia del registro opt-in de arriba.
+    function isIdentityConfirmationWrite() {
+      return affectedParticipantKeys().hasOnly(['device_id_hash', 'identidad_verificada_caso_a']);
+    }
+
     match /mesh_states/{docId} {
       allow read: if isRescuePanel();
       allow create, update: if isAuthenticated() &&
@@ -35,7 +56,8 @@ service cloud.firestore {
     match /participants/{docId} {
       allow read: if isRescuePanel();
       allow create, update: if isAuthenticated() &&
-        matchesParticipantId(docId, request.resource.data);
+        matchesParticipantId(docId, request.resource.data) &&
+        (isSelfRegistrationWrite() || isIdentityConfirmationWrite());
     }
 
     match /{document=**} {

@@ -13,6 +13,7 @@
 		279FBA0CA471118E54A42E74 /* DeviceIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = F00D736E69960596901F5217 /* DeviceIdentity */; };
 		2BADDD6F4E46405A899EFF1E /* BatteryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */; };
 		46803115D8A48ACE4DFDCC92 /* KeychainParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3528BA983C47C653155442C3 /* KeychainParticipantStore.swift */; };
+		4A2EA9C68190F9E3E5ED4D1B /* FirebaseIdentityConfirmationUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1726CD90AB5F23C3D2E36C9B /* FirebaseIdentityConfirmationUploader.swift */; };
 		4BB6191648EE70638957B667 /* ConnectivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */; };
 		5511ABC698D599BE6D46F124 /* PacketCodec in Frameworks */ = {isa = PBXBuildFile; productRef = E48ECC07058987F9E4955283 /* PacketCodec */; };
 		5B3AE2B40F38915E10457909 /* EmergencyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */; };
@@ -38,6 +39,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1726CD90AB5F23C3D2E36C9B /* FirebaseIdentityConfirmationUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseIdentityConfirmationUploader.swift; sourceTree = "<group>"; };
 		1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmergencyView.swift; sourceTree = "<group>"; };
 		2B07047A9350FF389270ADB4 /* EmergencyApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EmergencyApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3528BA983C47C653155442C3 /* KeychainParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainParticipantStore.swift; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */,
 				5DE73C3625A095134B1280AD /* FarososApp.swift */,
 				794DBDDA9AFEDCA9441042C3 /* FirebaseAuthSession.swift */,
+				1726CD90AB5F23C3D2E36C9B /* FirebaseIdentityConfirmationUploader.swift */,
 				CF02A9701D9CF6DC0A508957 /* FirebaseMeshStateUploader.swift */,
 				9CE9260BACE6294408DCEF7E /* FirebaseParticipantUploader.swift */,
 				6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */,
@@ -221,6 +224,7 @@
 				997968B4BC1608E98F72A746 /* EmergencyViewModel.swift in Sources */,
 				A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */,
 				AB56C0300F7C60D8CB9BA5E0 /* FirebaseAuthSession.swift in Sources */,
+				4A2EA9C68190F9E3E5ED4D1B /* FirebaseIdentityConfirmationUploader.swift in Sources */,
 				EB335B8B71400C1910FDF75A /* FirebaseMeshStateUploader.swift in Sources */,
 				F0BA61A4E365FC3C207C6DCE /* FirebaseParticipantUploader.swift in Sources */,
 				5D4ED6485B7956361079D49B /* KeychainDeviceIdentity.swift in Sources */,

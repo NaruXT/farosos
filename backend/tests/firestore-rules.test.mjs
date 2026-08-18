@@ -53,6 +53,14 @@ function buildParticipant(overrides = {}) {
   };
 }
 
+function buildIdentityConfirmation(overrides = {}) {
+  return {
+    device_id_hash: 'abc123',
+    identidad_verificada_caso_a: true,
+    ...overrides,
+  };
+}
+
 function anonContext(uid) {
   return testEnv.authenticatedContext(uid, {
     firebase: { sign_in_provider: 'anonymous' },
@@ -146,6 +154,59 @@ describe('lectura de colección completa (Panel de rescate, #33)', () => {
 
     const anon = anonContext('gateway-phone-1');
     await assertFails(getDocs(collection(anon.firestore(), 'mesh_states')));
+  });
+});
+
+describe('participants — confirmación de identidad Caso A (#52/#53)', () => {
+  it('permite crear un documento nuevo solo con la confirmación (víctima Caso A que nunca se registró)', async () => {
+    const gateway = anonContext('gateway-phone-1');
+    await assertSucceeds(
+      setDoc(doc(gateway.firestore(), 'participants', 'abc123'), buildIdentityConfirmation(), { merge: true })
+    );
+  });
+
+  it('permite confirmar la identidad de un participante ya registrado sin tocar name/contacto', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'participants', 'abc123'), buildParticipant());
+    });
+
+    const gateway = anonContext('gateway-phone-2');
+    await assertSucceeds(
+      setDoc(doc(gateway.firestore(), 'participants', 'abc123'), buildIdentityConfirmation(), { merge: true })
+    );
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), 'participants', 'abc123'));
+      assert.equal(snap.data().name, 'Ana', 'name no debe cambiar');
+      assert.equal(snap.data().contacto, '+51999999999', 'contacto no debe cambiar');
+      assert.equal(snap.data().identidad_verificada_caso_a, true);
+    });
+  });
+
+  it('deniega una escritura de confirmación que además intenta cambiar name', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'participants', 'abc123'), buildParticipant());
+    });
+
+    const attacker = anonContext('gateway-phone-3');
+    await assertFails(
+      setDoc(
+        doc(attacker.firestore(), 'participants', 'abc123'),
+        buildIdentityConfirmation({ name: 'Nombre falso' }),
+        { merge: true }
+      )
+    );
+  });
+
+  it('deniega crear un documento nuevo con name además de la confirmación (mezcla los dos tipos de escritura)', async () => {
+    const attacker = anonContext('gateway-phone-4');
+    await assertFails(
+      setDoc(
+        doc(attacker.firestore(), 'participants', 'abc123'),
+        buildIdentityConfirmation({ name: 'Nombre falso' }),
+        { merge: true }
+      )
+    );
   });
 });
 

@@ -51,6 +51,18 @@ final class EmergencyViewModel: ObservableObject {
     private let participantUploadCoordinator: ParticipantUploadCoordinator
     private let meshStateRegistry = MeshStateRegistry()
     private let gatewayUploader: GatewayUploader
+    /// Caso A (#44/#52): `signatureFragmentAssembler.receive(_:)` todavía no
+    /// se alimenta de paquetes reales — `handleReceivedPacketData` solo
+    /// decodifica `BeaconPacket` (layout legado `Tipo=0-2`) hoy, y despachar
+    /// también `FragmentoFirmaPacket`/`CaseBBeaconPacket` ahí es una decisión
+    /// de arquitectura que ninguna ticket de Fase 4 tomó todavía (mismo
+    /// límite ya documentado en #42-#45). Lo que SÍ está completo y en vivo:
+    /// en cuanto algo llegue a verificar una identidad, `verifiedIdentityRegistry`
+    /// la recuerda y `identityConfirmationUploader` la sube al entrar a
+    /// `GATEWAY_ACTIVO`, igual que `gatewayUploader`/`meshStateRegistry`.
+    private let signatureFragmentAssembler = SignatureFragmentAssembler()
+    private let verifiedIdentityRegistry = VerifiedIdentityRegistry()
+    private let identityConfirmationUploader: IdentityConfirmationUploader
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -68,6 +80,13 @@ final class EmergencyViewModel: ObservableObject {
             KeychainParticipantStore.markUploaded()
         }
         gatewayUploader = GatewayUploader(registry: meshStateRegistry, uploader: FirebaseMeshStateUploader())
+        identityConfirmationUploader = IdentityConfirmationUploader(
+            registry: verifiedIdentityRegistry,
+            uploader: FirebaseIdentityConfirmationUploader()
+        )
+        signatureFragmentAssembler.onIdentityVerified = { [weak verifiedIdentityRegistry] deviceIdHash, _ in
+            verifiedIdentityRegistry?.record(deviceIdHash)
+        }
         let scheduler = RealScheduler()
         machine = PersonStateMachine(
             scheduler: scheduler,
@@ -114,6 +133,9 @@ final class EmergencyViewModel: ObservableObject {
         gatewayUploader.onError = onMain { viewModel, error in
             viewModel.appendLogEntry(.info(message: error.localizedDescription))
         }
+        identityConfirmationUploader.onError = onMain { viewModel, error in
+            viewModel.appendLogEntry(.info(message: error.localizedDescription))
+        }
         batteryMonitor.onBatteryChanged = onMain { viewModel, reading in
             viewModel.networkMachine.updateBattery(percent: reading.percent, isCharging: reading.isCharging)
         }
@@ -143,9 +165,11 @@ final class EmergencyViewModel: ObservableObject {
         if newRole == .gatewayActivo {
             refreshGatewayAnnouncement()
             gatewayUploader.start()
+            identityConfirmationUploader.start()
         } else {
             relayQueue.clearGatewayAnnouncement()
             gatewayUploader.stop()
+            identityConfirmationUploader.stop()
         }
     }
 
