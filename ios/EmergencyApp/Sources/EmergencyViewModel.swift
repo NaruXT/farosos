@@ -51,16 +51,16 @@ final class EmergencyViewModel: ObservableObject {
     private let participantUploadCoordinator: ParticipantUploadCoordinator
     private let meshStateRegistry = MeshStateRegistry()
     private let gatewayUploader: GatewayUploader
-    /// Caso A (#44/#52): `signatureFragmentAssembler.receive(_:)` todavía no
-    /// se alimenta de paquetes reales — `handleReceivedPacketData` solo
-    /// decodifica `BeaconPacket` (layout legado `Tipo=0-2`) hoy, y despachar
-    /// también `FragmentoFirmaPacket`/`CaseBBeaconPacket` ahí es una decisión
-    /// de arquitectura que ninguna ticket de Fase 4 tomó todavía (mismo
-    /// límite ya documentado en #42-#45). Lo que SÍ está completo y en vivo:
-    /// en cuanto algo llegue a verificar una identidad, `verifiedIdentityRegistry`
-    /// la recuerda y `identityConfirmationUploader` la sube al entrar a
-    /// `GATEWAY_ACTIVO`, igual que `gatewayUploader`/`meshStateRegistry`.
-    private let signatureFragmentAssembler = SignatureFragmentAssembler()
+    /// Caso A (#52): `verifiedIdentityRegistry.record(_:)` todavía no lo
+    /// llama nada — ninguna ticket de Fase 4 conectó todavía la verificación
+    /// local de fragmentos (`SignatureFragmentAssembler`, #44) a la recepción
+    /// real de paquetes BLE (`handleReceivedPacketData` solo decodifica
+    /// `BeaconPacket`, layout legado `Tipo=0-2`, hoy). Instanciar el
+    /// assembler acá antes de que exista esa fuente real sería código muerto
+    /// (Speculative Generality) — a diferencia de `identityConfirmationUploader`,
+    /// que sí está atado a una señal real que ya funciona (`GATEWAY_ACTIVO`).
+    /// Cuando una ticket futura resuelva ese dispatch, le toca a ella también
+    /// instanciar el assembler y conectar `onIdentityVerified` acá.
     private let verifiedIdentityRegistry = VerifiedIdentityRegistry()
     private let identityConfirmationUploader: IdentityConfirmationUploader
 
@@ -84,9 +84,6 @@ final class EmergencyViewModel: ObservableObject {
             registry: verifiedIdentityRegistry,
             uploader: FirebaseIdentityConfirmationUploader()
         )
-        signatureFragmentAssembler.onIdentityVerified = { [weak verifiedIdentityRegistry] deviceIdHash, _ in
-            verifiedIdentityRegistry?.record(deviceIdHash)
-        }
         let scheduler = RealScheduler()
         machine = PersonStateMachine(
             scheduler: scheduler,
