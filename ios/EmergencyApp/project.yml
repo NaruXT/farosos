@@ -26,6 +26,8 @@ targets:
         product: BeaconRadio
       - package: Farosos
         product: ParticipantRegistration
+      - package: Farosos
+        product: DeviceIdentity
       - package: FirebaseiOS
         product: FirebaseCore
       - package: FirebaseiOS

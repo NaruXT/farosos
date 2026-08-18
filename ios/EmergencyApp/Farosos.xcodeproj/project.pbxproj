@@ -10,16 +10,17 @@
 		02E646B9E157D30DEFCAB196 /* BeaconRadio in Frameworks */ = {isa = PBXBuildFile; productRef = 68B709E68892D544A7EF3D35 /* BeaconRadio */; };
 		0CAE1C0D5B6335ACFA84ABE3 /* ParticipantRegistration in Frameworks */ = {isa = PBXBuildFile; productRef = 13CA91283C3FC3F1D2F76E15 /* ParticipantRegistration */; };
 		21FB2D2DF45C03497B722387 /* BleAdvertiser.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA856BD18A81DA5D60151BFE /* BleAdvertiser.swift */; };
-		279FBA0CA471118E54A42E74 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83515037C25D4058E88E3DCB /* FirebaseCore */; };
+		279FBA0CA471118E54A42E74 /* DeviceIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = F00D736E69960596901F5217 /* DeviceIdentity */; };
 		2BADDD6F4E46405A899EFF1E /* BatteryMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887B585DF02A50D2CD8D34B6 /* BatteryMonitor.swift */; };
 		46803115D8A48ACE4DFDCC92 /* KeychainParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3528BA983C47C653155442C3 /* KeychainParticipantStore.swift */; };
 		4BB6191648EE70638957B667 /* ConnectivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D67C30CE41C9DB3CCDD1D6F /* ConnectivityMonitor.swift */; };
 		5511ABC698D599BE6D46F124 /* PacketCodec in Frameworks */ = {isa = PBXBuildFile; productRef = E48ECC07058987F9E4955283 /* PacketCodec */; };
 		5B3AE2B40F38915E10457909 /* EmergencyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */; };
+		5C6867FF1A28F08CB26CE70B /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C062AFF83274A22E4A7DE982 /* FirebaseFirestore */; };
 		5D4ED6485B7956361079D49B /* KeychainDeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625F5BB305A188755EBFA920 /* KeychainDeviceIdentity.swift */; };
 		6881141ABB99E0209E7DE563 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72092A59D9E46295D71020D /* LogView.swift */; };
 		760EA0C585C1ED2D8079C6B1 /* RegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5080A7024F76298E8E101AA /* RegistrationViewModel.swift */; };
-		9494C0B3CBA9D9214B91B2DD /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C062AFF83274A22E4A7DE982 /* FirebaseFirestore */; };
+		9494C0B3CBA9D9214B91B2DD /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 1C7A6007AF424012B968BA2E /* FirebaseAuth */; };
 		997968B4BC1608E98F72A746 /* EmergencyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8AE951C029A1B81CD2CDCE2 /* EmergencyViewModel.swift */; };
 		A29D287758C560AB828EAB3C /* FarososApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE73C3625A095134B1280AD /* FarososApp.swift */; };
 		AB56C0300F7C60D8CB9BA5E0 /* FirebaseAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794DBDDA9AFEDCA9441042C3 /* FirebaseAuthSession.swift */; };
@@ -30,7 +31,7 @@
 		EB335B8B71400C1910FDF75A /* FirebaseMeshStateUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF02A9701D9CF6DC0A508957 /* FirebaseMeshStateUploader.swift */; };
 		EB3D64FF0EBD4B06F66E9EA3 /* NetworkRoleMachine in Frameworks */ = {isa = PBXBuildFile; productRef = F8965C1806216DADB852DA1A /* NetworkRoleMachine */; };
 		EBB52732AF337BFE2D8F7B69 /* RegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F054822657F0D778DC9EC36 /* RegistrationView.swift */; };
-		ED407137EAB4BF258A7294D1 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 1C7A6007AF424012B968BA2E /* FirebaseAuth */; };
+		ED407137EAB4BF258A7294D1 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83515037C25D4058E88E3DCB /* FirebaseCore */; };
 		F0BA61A4E365FC3C207C6DCE /* FirebaseParticipantUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE9260BACE6294408DCEF7E /* FirebaseParticipantUploader.swift */; };
 		F508F2F48CF7A29B24ECAF6D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6CFF2A0F3A333CC8CE741BA6 /* GoogleService-Info.plist */; };
 		FAC4273AD5378C3FBC8CCD1E /* RealScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D148061E314F0B683720C25B /* RealScheduler.swift */; };
@@ -70,9 +71,10 @@
 				5511ABC698D599BE6D46F124 /* PacketCodec in Frameworks */,
 				02E646B9E157D30DEFCAB196 /* BeaconRadio in Frameworks */,
 				0CAE1C0D5B6335ACFA84ABE3 /* ParticipantRegistration in Frameworks */,
-				279FBA0CA471118E54A42E74 /* FirebaseCore in Frameworks */,
-				ED407137EAB4BF258A7294D1 /* FirebaseAuth in Frameworks */,
-				9494C0B3CBA9D9214B91B2DD /* FirebaseFirestore in Frameworks */,
+				279FBA0CA471118E54A42E74 /* DeviceIdentity in Frameworks */,
+				ED407137EAB4BF258A7294D1 /* FirebaseCore in Frameworks */,
+				9494C0B3CBA9D9214B91B2DD /* FirebaseAuth in Frameworks */,
+				5C6867FF1A28F08CB26CE70B /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,6 +154,7 @@
 				E48ECC07058987F9E4955283 /* PacketCodec */,
 				68B709E68892D544A7EF3D35 /* BeaconRadio */,
 				13CA91283C3FC3F1D2F76E15 /* ParticipantRegistration */,
+				F00D736E69960596901F5217 /* DeviceIdentity */,
 				83515037C25D4058E88E3DCB /* FirebaseCore */,
 				1C7A6007AF424012B968BA2E /* FirebaseAuth */,
 				C062AFF83274A22E4A7DE982 /* FirebaseFirestore */,
@@ -471,6 +474,10 @@
 		E48ECC07058987F9E4955283 /* PacketCodec */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PacketCodec;
+		};
+		F00D736E69960596901F5217 /* DeviceIdentity */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeviceIdentity;
 		};
 		F8965C1806216DADB852DA1A /* NetworkRoleMachine */ = {
 			isa = XCSwiftPackageProductDependency;
