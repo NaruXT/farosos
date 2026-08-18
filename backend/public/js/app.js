@@ -11,7 +11,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { latestPerDevice, historyForDevice, attachParticipantInfo, sortByMostRecent } from './meshView.mjs';
+import { latestPerDevice, historyForDevice, attachParticipantInfo, verificationLabel, sortByMostRecent } from './meshView.mjs';
 
 const STATUS_LABELS = {
   SIN_CONFIRMAR: 'Sin confirmar',
@@ -107,10 +107,15 @@ function render() {
   }
 }
 
+/** Enriquece cada estado con `attachParticipantInfo` contra el mapa de
+ * participants actual — mismo paso previo al render en ambas tablas
+ * (estado actual e historial). */
+function withParticipantInfo(states) {
+  return states.map((state) => attachParticipantInfo(state, participantsByHash));
+}
+
 function renderCurrentState() {
-  const latest = sortByMostRecent(
-    latestPerDevice(meshStates).map((state) => attachParticipantInfo(state, participantsByHash))
-  );
+  const latest = sortByMostRecent(withParticipantInfo(latestPerDevice(meshStates)));
 
   currentStateBody.textContent = '';
   currentStateEmpty.hidden = latest.length > 0;
@@ -139,6 +144,8 @@ function renderCurrentState() {
     gatewaysCell.textContent = String((state.confirmed_by_gateways ?? []).length);
     row.appendChild(gatewaysCell);
 
+    row.appendChild(verificationCell(state));
+
     currentStateBody.appendChild(row);
   }
 }
@@ -158,7 +165,7 @@ function showCurrentState() {
 }
 
 function renderHistory(deviceIdHash) {
-  const history = historyForDevice(meshStates, deviceIdHash);
+  const history = withParticipantInfo(historyForDevice(meshStates, deviceIdHash));
   historyBody.textContent = '';
   for (const state of history) {
     const row = document.createElement('tr');
@@ -170,9 +177,34 @@ function renderHistory(deviceIdHash) {
     row.appendChild(statusCell(state.status));
     row.appendChild(locationCell(state.latitude, state.longitude));
     row.appendChild(timeCell(state.uploaded_at));
+    row.appendChild(verificationCell(state));
 
     historyBody.appendChild(row);
   }
+}
+
+/** DOM de la columna "Verificación" (#54) a partir de `verificationLabel`
+ * (`meshView.mjs`, testeada) — acá solo se construyen los elementos, la
+ * decisión de qué mostrar vive en la función pura. */
+function verificationCell(state) {
+  const cell = document.createElement('td');
+  cell.className = 'verification';
+  const label = verificationLabel(state);
+  if (!label.unverified) return cell;
+
+  const unverified = document.createElement('span');
+  unverified.className = 'verification-unverified';
+  unverified.textContent = 'No verificado';
+  cell.appendChild(unverified);
+
+  if (label.identityConfirmed) {
+    const confirmed = document.createElement('span');
+    confirmed.className = 'verification-confirmed';
+    confirmed.textContent = 'Identidad confirmada';
+    cell.appendChild(confirmed);
+  }
+
+  return cell;
 }
 
 function statusCell(status) {

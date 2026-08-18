@@ -1,6 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { latestPerDevice, historyForDevice, attachParticipantInfo, sortByMostRecent } from '../public/js/meshView.mjs';
+import {
+  latestPerDevice,
+  historyForDevice,
+  attachParticipantInfo,
+  isCasoA,
+  verificationLabel,
+  sortByMostRecent,
+} from '../public/js/meshView.mjs';
 
 function state(overrides = {}) {
   return {
@@ -101,6 +108,60 @@ describe('attachParticipantInfo', () => {
     attachParticipantInfo(original, { aaa: { name: 'Ana', contacto: '+51999999999' } });
     assert.equal(original.name, undefined);
     assert.equal(original.contact, undefined);
+  });
+
+  it('identityConfirmedCaseA es true cuando el participant tiene identidad_verificada_caso_a: true (#54)', () => {
+    const result = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {
+      aaa: { identidad_verificada_caso_a: true },
+    });
+    assert.equal(result.identityConfirmedCaseA, true);
+  });
+
+  it('identityConfirmedCaseA es false cuando el participant tiene identidad_verificada_caso_a: false', () => {
+    const result = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {
+      aaa: { identidad_verificada_caso_a: false },
+    });
+    assert.equal(result.identityConfirmedCaseA, false);
+  });
+
+  it('identityConfirmedCaseA es false cuando el campo está ausente (nunca se confirmó, o no hay participant)', () => {
+    const withParticipantSinCampo = attachParticipantInfo(state({ device_id_hash: 'aaa' }), { aaa: { name: 'Ana' } });
+    const sinParticipant = attachParticipantInfo(state({ device_id_hash: 'zzz' }), { aaa: { name: 'Ana' } });
+    assert.equal(withParticipantSinCampo.identityConfirmedCaseA, false);
+    assert.equal(sinParticipant.identityConfirmedCaseA, false);
+  });
+});
+
+describe('isCasoA', () => {
+  it('es true cuando el documento no declara version (100% de mesh_states hoy, #54)', () => {
+    assert.equal(isCasoA(state()), true);
+  });
+
+  it('es true cuando version es 1 (legado, explícito)', () => {
+    assert.equal(isCasoA(state({ version: 1 })), true);
+  });
+
+  it('es false cuando version es 2 (Caso B — reservado para cuando #48/#49 exista)', () => {
+    assert.equal(isCasoA(state({ version: 2 })), false);
+  });
+});
+
+describe('verificationLabel', () => {
+  it('Caso A sin identidad confirmada: unverified true, identityConfirmed false', () => {
+    const enriched = attachParticipantInfo(state(), {});
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, identityConfirmed: false });
+  });
+
+  it('Caso A con identidad confirmada: unverified true, identityConfirmed true', () => {
+    const enriched = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {
+      aaa: { identidad_verificada_caso_a: true },
+    });
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, identityConfirmed: true });
+  });
+
+  it('Caso B: unverified false, identityConfirmed false — sin marca por este ticket (#54)', () => {
+    const enriched = attachParticipantInfo(state({ version: 2 }), {});
+    assert.deepEqual(verificationLabel(enriched), { unverified: false, identityConfirmed: false });
   });
 });
 
