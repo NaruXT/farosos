@@ -1,7 +1,9 @@
 import BeaconRadio
 import CaseResolution
 import Combine
+import CoreBluetooth
 import DeviceIdentity
+import DirectChat
 import Foundation
 import NetworkRoleMachine
 import PacketCodec
@@ -70,6 +72,16 @@ final class EmergencyViewModel: ObservableObject {
     /// `identityConfirmationUploader`): el resolutor sube directo cuando su
     /// propio teléfono tiene señal, sin pasar por la malla BLE.
     private let resolutionUploadCoordinator: ResolutionUploadCoordinator
+    /// Chat directo (#61/#62) — "lo que este teléfono sabe" de a qué
+    /// periférico corresponde cada `device_id_hash`, alimentado desde
+    /// `handleReceivedPacketData` (mismo criterio que `meshStateRegistry`:
+    /// se llena con cualquier beacon recibido, sin importar el rol de red
+    /// actual). `chatHostViewModel` vive mientras este view model exista
+    /// (no solo mientras la pantalla de chat está abierta) porque el
+    /// servicio GATT puede recibir una conexión en cualquier momento
+    /// mientras el propio estado pida ayuda.
+    private let chatPeerDirectory = ChatPeerDirectory()
+    private lazy var chatHostViewModel = ChatHostViewModel(ownDeviceIdHash: deviceIdHash, advertiser: advertiser)
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -152,6 +164,21 @@ final class EmergencyViewModel: ObservableObject {
         )
     }
 
+    /// `nil` si este teléfono todavía no vio ningún beacon de ese caso (no
+    /// hay `CBPeripheral` con el que conectarse) — no debería pasar en la
+    /// práctica, ya que "Casos" solo lista casos que sí llegaron por la
+    /// malla, pero se maneja explícito en vez de asumir.
+    func makeChatViewModel(forDeviceIdHash deviceIdHash: Data) -> ChatViewModel? {
+        guard let peripheral = chatPeerDirectory.peripheral(for: deviceIdHash) else { return nil }
+        return ChatViewModel(ownDeviceIdHash: self.deviceIdHash, peripheral: peripheral)
+    }
+
+    /// Vive en `self` (no se crea bajo demanda como `KnownCasesViewModel`)
+    /// porque el servicio GATT del lado host puede recibir una conexión en
+    /// cualquier momento mientras el propio estado pida ayuda, no solo
+    /// mientras la pantalla de chat está abierta.
+    func ownChatHostViewModel() -> ChatHostViewModel { chatHostViewModel }
+
     // MARK: - Máquina B (rol de red, tickets #13/#17/#20/#24)
     //
     // Batería y conectividad llegan de `BatteryMonitor`/`ConnectivityMonitor`
@@ -230,6 +257,11 @@ final class EmergencyViewModel: ObservableObject {
         state = newState
         appendLogEntry(.transition(state: newState, sequence: machine.sequence))
         refreshAdvertisedBeacon()
+        // Chat directo (#61/#62): el servicio GATT solo está activo
+        // mientras el propio estado pida ayuda — decisión explícita de
+        // batería de la sesión de `/grilling`, nadie paga el costo de un
+        // servicio que no va a necesitar.
+        advertiser.setChatServiceEnabled(newState.isRequestingHelp)
 
         switch newState {
         case .activoSinConfirmar:
@@ -254,11 +286,16 @@ final class EmergencyViewModel: ObservableObject {
         // anunciarla): se decodifica con el mismo envoltorio con el que se
         // emite. GATT (peers iOS, ver `BeaconGattService`): el valor leído
         // ya es el `BeaconPacket` crudo, sin envoltorio.
-        scanner.onManufacturerData = onMain { viewModel, data in
-            viewModel.handleReceivedPacketData(data, decode: ManufacturerDataFrame.decode)
+        // `onMain` no sirve acá (espera un solo `Value`, no dos parámetros
+        // sueltos) — mismo `[weak self] in Task { @MainActor in ... }` que
+        // ya encapsula, escrito a mano para estos dos.
+        scanner.onManufacturerData = { [weak self] data, peripheral in
+            guard let self else { return }
+            Task { @MainActor in self.handleReceivedPacketData(data, peripheral: peripheral, decode: ManufacturerDataFrame.decode) }
         }
-        scanner.onGattPacketData = onMain { viewModel, data in
-            viewModel.handleReceivedPacketData(data, decode: BeaconPacketCodec.decode)
+        scanner.onGattPacketData = { [weak self] data, peripheral in
+            guard let self else { return }
+            Task { @MainActor in self.handleReceivedPacketData(data, peripheral: peripheral, decode: BeaconPacketCodec.decode) }
         }
         // `RelayQueue` ya despacha en el hilo principal (su scheduler es el
         // mismo `RealScheduler` de la Máquina A), así que esto no necesita
@@ -307,9 +344,13 @@ final class EmergencyViewModel: ObservableObject {
     /// Punto de entrada compartido por ambas rutas de recepción (Manufacturer
     /// Data directa y GATT) — cada una trae su propio `decode` porque el
     /// envoltorio de bytes difiere, pero el dedup + log + relay de ahí en
-    /// adelante es idéntico sin importar el transporte.
-    private func handleReceivedPacketData(_ data: Data, decode: (Data) -> BeaconPacket?) {
+    /// adelante es idéntico sin importar el transporte. `peripheral` se
+    /// registra en `chatPeerDirectory` incluso si el paquete resulta
+    /// duplicado (#61/#62) — el directorio quiere saber "a qué periférico
+    /// corresponde este hash", no solo sobre paquetes nuevos.
+    private func handleReceivedPacketData(_ data: Data, peripheral: CBPeripheral, decode: (Data) -> BeaconPacket?) {
         guard let packet = decode(data) else { return }
+        chatPeerDirectory.record(deviceIdHash: packet.deviceIdHash, peripheral: peripheral)
         let key = DedupCache.Key(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce)
         guard dedupCache.insertIfAbsent(key) else {
             appendLogEntry(.duplicateDiscarded(deviceIdHash: packet.deviceIdHash, nonce: packet.nonce))

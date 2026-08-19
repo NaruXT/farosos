@@ -30,6 +30,8 @@ targets:
         product: DeviceIdentity
       - package: Farosos
         product: CaseResolution
+      - package: Farosos
+        product: DirectChat
       - package: FirebaseiOS
         product: FirebaseCore
       - package: FirebaseiOS

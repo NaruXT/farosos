@@ -18,8 +18,14 @@ import Foundation
 /// enmascararía la caché de dedup de la app (decisión 12) en vez de
 /// ejercitarla.
 final class BleScanner: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    var onManufacturerData: ((Data) -> Void)?
-    var onGattPacketData: ((Data) -> Void)?
+    /// El `CBPeripheral` acompaña cada paquete recibido (#61/#62) — quien
+    /// decodifica (`EmergencyViewModel`) es quien sabe el `device_id_hash`
+    /// real, así que es ahí donde se arma el directorio peripheral↔hash que
+    /// el chat necesita para poder reconectarse más tarde a un caso
+    /// elegido desde "Casos". `BleScanner` mismo no decodifica nada, solo
+    /// reenvía el peripheral con el que llegó cada paquete.
+    var onManufacturerData: ((Data, CBPeripheral) -> Void)?
+    var onGattPacketData: ((Data, CBPeripheral) -> Void)?
     var onError: ((String) -> Void)?
 
     /// Si un peer acepta la conexión pero nunca completa el descubrimiento
@@ -67,7 +73,7 @@ final class BleScanner: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
         rssi RSSI: NSNumber
     ) {
         if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-            onManufacturerData?(manufacturerData)
+            onManufacturerData?(manufacturerData, peripheral)
             return
         }
         let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
@@ -120,6 +126,6 @@ final class BleScanner: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         defer { centralManager.cancelPeripheralConnection(peripheral) }
         guard error == nil, let data = characteristic.value else { return }
-        onGattPacketData?(data)
+        onGattPacketData?(data, peripheral)
     }
 }

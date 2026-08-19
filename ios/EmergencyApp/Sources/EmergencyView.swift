@@ -5,6 +5,8 @@ struct EmergencyView: View {
     @StateObject private var viewModel = EmergencyViewModel()
     @State private var showingLog = false
     @State private var showingKnownCases = false
+    @State private var showingOwnChat = false
+    @State private var chatDeviceIdHash: Data?
 
     var body: some View {
         NavigationStack {
@@ -31,6 +33,11 @@ struct EmergencyView: View {
             .padding()
             .navigationTitle("Farosos")
             .toolbar {
+                if viewModel.state.isRequestingHelp {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Chat") { showingOwnChat = true }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Casos") { showingKnownCases = true }
                 }
@@ -47,11 +54,39 @@ struct EmergencyView: View {
             .sheet(isPresented: $showingKnownCases) {
                 KnownCasesView(
                     viewModel: viewModel.makeKnownCasesViewModel(),
-                    ownState: viewModel.state
+                    ownState: viewModel.state,
+                    onOpenChat: { deviceIdHash in
+                        showingKnownCases = false
+                        chatDeviceIdHash = deviceIdHash
+                    }
                 )
+            }
+            .sheet(isPresented: $showingOwnChat) {
+                NavigationStack {
+                    ChatHostView(viewModel: viewModel.ownChatHostViewModel())
+                }
+            }
+            .sheet(item: Binding(
+                get: { chatDeviceIdHash.map { ChatTarget(deviceIdHash: $0) } },
+                set: { chatDeviceIdHash = $0?.deviceIdHash }
+            )) { target in
+                if let chatViewModel = viewModel.makeChatViewModel(forDeviceIdHash: target.deviceIdHash) {
+                    NavigationStack { ChatView(viewModel: chatViewModel) }
+                } else {
+                    Text("Ya no se puede conectar a este caso.")
+                        .padding()
+                }
             }
         }
     }
+}
+
+/// `.sheet(item:)` necesita `Identifiable` — envoltorio liviano para poder
+/// presentar el chat de un `device_id_hash` elegido dinámicamente sin un
+/// `Bool` de estado aparte por caso.
+private struct ChatTarget: Identifiable {
+    let deviceIdHash: Data
+    var id: Data { deviceIdHash }
 }
 
 private struct DormidoScreen: View {

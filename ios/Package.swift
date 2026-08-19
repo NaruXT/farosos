@@ -14,7 +14,8 @@ let package = Package(
         .library(name: "BeaconRadio", targets: ["BeaconRadio"]),
         .library(name: "ParticipantRegistration", targets: ["ParticipantRegistration"]),
         .library(name: "DeviceIdentity", targets: ["DeviceIdentity"]),
-        .library(name: "CaseResolution", targets: ["CaseResolution"])
+        .library(name: "CaseResolution", targets: ["CaseResolution"]),
+        .library(name: "DirectChat", targets: ["DirectChat"])
     ],
     targets: [
         .target(name: "PacketCodec"),
@@ -31,6 +32,8 @@ let package = Package(
         .target(name: "ParticipantRegistration"),
         .testTarget(name: "ParticipantRegistrationTests", dependencies: ["ParticipantRegistration"]),
         .target(name: "CaseResolution"),
-        .testTarget(name: "CaseResolutionTests", dependencies: ["CaseResolution"])
+        .testTarget(name: "CaseResolutionTests", dependencies: ["CaseResolution"]),
+        .target(name: "DirectChat"),
+        .testTarget(name: "DirectChatTests", dependencies: ["DirectChat"])
     ]
 )

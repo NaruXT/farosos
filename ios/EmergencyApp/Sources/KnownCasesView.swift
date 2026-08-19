@@ -13,6 +13,11 @@ import SwiftUI
 struct KnownCasesView: View {
     @ObservedObject var viewModel: KnownCasesViewModel
     let ownState: PersonState
+    /// Callback en vez de navegación propia — esta pantalla no sabe cómo
+    /// construir un `ChatViewModel` (necesita el `CBPeripheral` del caso,
+    /// que vive en `EmergencyViewModel.chatPeerDirectory`), solo avisa qué
+    /// caso se eligió.
+    let onOpenChat: (Data) -> Void
 
     var body: some View {
         NavigationStack {
@@ -50,6 +55,10 @@ struct KnownCasesView: View {
                         viewModel.markResolved(caseState)
                     }
                     .buttonStyle(.borderedProminent)
+                    Button("Abrir chat") {
+                        onOpenChat(caseState.deviceIdHash)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
