@@ -19,7 +19,16 @@ import {
   verificationLabel,
   statusLabel,
   sortByMostRecent,
+  resolutionInfo,
+  attendingList,
+  hasBeaconData,
 } from './meshView.mjs';
+
+const PROXIMITY_LABELS = {
+  verificada: 'Proximidad verificada',
+  fuera_de_rango: 'Fuera de 100m',
+  sin_verificar: 'Proximidad sin verificar',
+};
 
 const STATUS_LABELS = {
   SIN_CONFIRMAR: 'Sin confirmar',
@@ -153,6 +162,7 @@ function renderCurrentState() {
     row.appendChild(gatewaysCell);
 
     row.appendChild(verificationCell(state));
+    row.appendChild(rescueCell(state));
 
     currentStateBody.appendChild(row);
   }
@@ -186,6 +196,7 @@ function renderHistory(deviceIdHash) {
     row.appendChild(locationCell(state.latitude, state.longitude));
     row.appendChild(timeCell(state.uploaded_at));
     row.appendChild(verificationCell(state));
+    row.appendChild(rescueCell(state));
 
     historyBody.appendChild(row);
   }
@@ -227,10 +238,18 @@ function verificationCell(state) {
 
 /** `statusLabel` (`meshView.mjs`, testeada) normaliza el `status` crudo de
  * Caso A (ya string) y Caso B (entero del wire, #48) a la misma etiqueta
- * antes de que esta función toque el DOM. */
+ * antes de que esta función toque el DOM. Un documento parcial (creado solo
+ * por una resolución que llegó antes que el beacon real, #55/#60) no tiene
+ * `status` — `hasBeaconData` lo detecta antes de que `label.toLowerCase()`
+ * reviente sobre `undefined`. */
 function statusCell(state) {
-  const label = statusLabel(state);
   const cell = document.createElement('td');
+  if (!hasBeaconData(state)) {
+    cell.textContent = 'Sin datos de beacon';
+    cell.className = 'status status-sin-datos';
+    return cell;
+  }
+  const label = statusLabel(state);
   cell.textContent = STATUS_LABELS[label] ?? label;
   cell.className = 'status status-' + label.toLowerCase();
   return cell;
@@ -238,12 +257,50 @@ function statusCell(state) {
 
 function locationCell(latitude, longitude) {
   const cell = document.createElement('td');
-  cell.textContent = `${latitude}, ${longitude}`;
+  cell.textContent = latitude != null && longitude != null ? `${latitude}, ${longitude}` : '—';
   return cell;
 }
 
 function timeCell(uploadedAtEpochSeconds) {
   const cell = document.createElement('td');
-  cell.textContent = new Date(uploadedAtEpochSeconds * 1000).toLocaleString('es');
+  cell.textContent = uploadedAtEpochSeconds != null ? new Date(uploadedAtEpochSeconds * 1000).toLocaleString('es') : '—';
+  return cell;
+}
+
+function appendSpan(cell, className, text) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  cell.appendChild(span);
+}
+
+/** Columna "Rescate" (#55/#60): quién marcó "resuelto" y cuándo, el estado
+ * de proximidad (`resolutionInfo`, `meshView.mjs`, testeada — nunca oculta
+ * el caso por ninguno de los tres valores posibles), y la lista completa de
+ * quienes marcaron "atendiendo" (`attendingList`). Un caso sin ninguna de
+ * las dos señales muestra "—", igual que el resto de columnas opcionales
+ * del panel (ej. `contactCell`). */
+function rescueCell(state) {
+  const cell = document.createElement('td');
+  cell.className = 'rescue';
+
+  const resolution = resolutionInfo(state);
+  const attending = attendingList(state);
+
+  if (!resolution.resolved && attending.length === 0) {
+    cell.textContent = '—';
+    return cell;
+  }
+
+  if (resolution.resolved) {
+    const when = resolution.resolvedAt != null ? new Date(resolution.resolvedAt * 1000).toLocaleString('es') : '—';
+    appendSpan(cell, 'rescue-resolved', `Resuelto por ${resolution.resolvedBy ?? '—'} (${when})`);
+    appendSpan(cell, 'rescue-proximity rescue-proximity-' + resolution.proximity, PROXIMITY_LABELS[resolution.proximity]);
+  }
+
+  if (attending.length > 0) {
+    appendSpan(cell, 'rescue-attending', 'Atendiendo: ' + attending.map((entry) => entry.device_id_hash).join(', '));
+  }
+
   return cell;
 }

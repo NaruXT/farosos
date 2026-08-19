@@ -102,3 +102,48 @@ export function statusLabel(meshState) {
 export function sortByMostRecent(meshStates) {
   return [...meshStates].sort((a, b) => b.uploaded_at - a.uploaded_at);
 }
+
+/** Traduce el campo crudo `proximidad_verificada` (`true`/`false`/ausente,
+ * escrito por la Cloud Function de #59) a una de las tres etiquetas que
+ * pide #55/#60 — nunca se trata como "verificada" por defecto cuando la
+ * función todavía no llegó a procesar el caso (mismo principio que
+ * `verificationLabel` con `mac_verificado`). */
+export function proximityLabel(proximidadVerificada) {
+  if (proximidadVerificada === true) return 'verificada';
+  if (proximidadVerificada === false) return 'fuera_de_rango';
+  return 'sin_verificar';
+}
+
+/** Estado de "resuelto" (#55) de un `mesh_states` — no resuelto si el campo
+ * `resuelto` no es exactamente `true` (ausente o `false` cuentan igual).
+ * Cuando sí lo está, expone quién lo marcó, cuándo, y la proximidad — nunca
+ * oculta el caso por ninguno de los tres valores posibles de
+ * `proximidad_verificada` (AC de #60). Funciona igual sobre un documento
+ * parcial (creado solo por la resolución, sin campos de beacon todavía). */
+export function resolutionInfo(meshState) {
+  if (meshState.resuelto !== true) return { resolved: false };
+  return {
+    resolved: true,
+    resolvedBy: meshState.resuelto_por ?? null,
+    resolvedAt: meshState.resuelto_en ?? null,
+    proximity: proximityLabel(meshState.proximidad_verificada),
+  };
+}
+
+/** Lista completa de participantes que marcaron "atendiendo" (#55) sobre
+ * este caso — nunca solo el primero. Vacía si el campo está ausente
+ * (nadie lo marcó todavía). Cada entrada trae `device_id_hash`/`marcado_en`
+ * (mismo esquema que escriben los clientes iOS/Android de #57/#58). */
+export function attendingList(meshState) {
+  return meshState.atendido_por ?? [];
+}
+
+/** Si el documento tiene los campos del beacon original (`status`, en
+ * particular) — falso para un documento creado únicamente por una
+ * resolución/atendiendo que llegó antes que el beacon real de la víctima
+ * (#55/#60, "documento parcial"). El resto del panel usa esto para no
+ * intentar mostrar estado/ubicación/hora de subida que no existen
+ * todavía, sin romper la fila ni el resto de la tabla. */
+export function hasBeaconData(meshState) {
+  return typeof meshState.status !== 'undefined';
+}

@@ -155,6 +155,38 @@ th {
   font-size: 0.8rem;
 }
 
+.rescue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rescue-resolved {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.rescue-proximity {
+  font-size: 0.8rem;
+}
+
+.rescue-proximity-verificada {
+  color: var(--color-success);
+}
+
+.rescue-proximity-fuera_de_rango {
+  color: var(--color-warning);
+}
+
+.rescue-proximity-sin_verificar {
+  color: var(--text-muted);
+}
+
+.rescue-attending {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 #history-back-button {
   margin-bottom: 12px;
   background: none;

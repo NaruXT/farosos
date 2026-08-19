@@ -8,6 +8,10 @@ import {
   verificationLabel,
   statusLabel,
   sortByMostRecent,
+  resolutionInfo,
+  proximityLabel,
+  attendingList,
+  hasBeaconData,
 } from '../public/js/meshView.mjs';
 
 function state(overrides = {}) {
@@ -197,6 +201,118 @@ describe('statusLabel', () => {
 
   it('un código numérico fuera de rango no revienta — se devuelve como string crudo', () => {
     assert.equal(statusLabel(state({ version: 2, status: 99 })), '99');
+  });
+});
+
+// Documento creado únicamente por una resolución/atendiendo que llegó antes
+// que el beacon real de la víctima (#55/#56/#60) — sin `status`, `latitude`,
+// `longitude` ni `uploaded_at`, solo `device_id_hash`/`sequence` (para el
+// docId) más los campos de resolución.
+function partialResolutionState(overrides = {}) {
+  return {
+    device_id_hash: 'zzz999',
+    sequence: 7,
+    resuelto: true,
+    resuelto_por: 'resolver1',
+    resuelto_en: 1755000200,
+    resolutor_latitud_e7: -120500000,
+    resolutor_longitud_e7: -770400000,
+    ...overrides,
+  };
+}
+
+describe('resolutionInfo (#55/#60)', () => {
+  it('no resuelto cuando el campo "resuelto" está ausente', () => {
+    assert.deepEqual(resolutionInfo(state()), { resolved: false });
+  });
+
+  it('no resuelto cuando "resuelto" es false', () => {
+    assert.deepEqual(resolutionInfo(state({ resuelto: false })), { resolved: false });
+  });
+
+  it('resuelto con proximidad verificada (proximidad_verificada: true)', () => {
+    const result = resolutionInfo(
+      state({ resuelto: true, resuelto_por: 'r1', resuelto_en: 1755000200, proximidad_verificada: true })
+    );
+    assert.deepEqual(result, { resolved: true, resolvedBy: 'r1', resolvedAt: 1755000200, proximity: 'verificada' });
+  });
+
+  it('resuelto con proximidad fuera de rango (proximidad_verificada: false) — nunca se oculta', () => {
+    const result = resolutionInfo(
+      state({ resuelto: true, resuelto_por: 'r1', resuelto_en: 1755000200, proximidad_verificada: false })
+    );
+    assert.equal(result.resolved, true);
+    assert.equal(result.proximity, 'fuera_de_rango');
+  });
+
+  it('resuelto sin proximidad_verificada todavía (la Cloud Function de #59 no llegó a procesarlo) — sin verificar, nunca "verificada" por defecto', () => {
+    const result = resolutionInfo(state({ resuelto: true, resuelto_por: 'r1', resuelto_en: 1755000200 }));
+    assert.equal(result.resolved, true);
+    assert.equal(result.proximity, 'sin_verificar');
+  });
+
+  it('funciona sobre un documento parcial (sin campos de beacon, solo resolución) sin reventar', () => {
+    const result = resolutionInfo(partialResolutionState());
+    assert.deepEqual(result, {
+      resolved: true,
+      resolvedBy: 'resolver1',
+      resolvedAt: 1755000200,
+      proximity: 'sin_verificar',
+    });
+  });
+});
+
+describe('proximityLabel', () => {
+  it('true → verificada', () => {
+    assert.equal(proximityLabel(true), 'verificada');
+  });
+  it('false → fuera_de_rango', () => {
+    assert.equal(proximityLabel(false), 'fuera_de_rango');
+  });
+  it('ausente (undefined) → sin_verificar', () => {
+    assert.equal(proximityLabel(undefined), 'sin_verificar');
+  });
+});
+
+describe('attendingList (#55/#60)', () => {
+  it('vacía cuando "atendido_por" está ausente', () => {
+    assert.deepEqual(attendingList(state()), []);
+  });
+
+  it('devuelve la lista completa, no solo el primero', () => {
+    const entries = [
+      { device_id_hash: 'r1', marcado_en: 1 },
+      { device_id_hash: 'r2', marcado_en: 2 },
+    ];
+    assert.deepEqual(attendingList(state({ atendido_por: entries })), entries);
+  });
+
+  it('funciona sobre un documento parcial sin reventar', () => {
+    const entries = [{ device_id_hash: 'r1', marcado_en: 1 }];
+    assert.deepEqual(attendingList(partialResolutionState({ atendido_por: entries, resuelto: undefined })), entries);
+  });
+});
+
+describe('hasBeaconData (#55/#60)', () => {
+  it('true para un documento con status (beacon real)', () => {
+    assert.equal(hasBeaconData(state()), true);
+  });
+
+  it('false para un documento parcial (solo resolución/atendiendo, sin status)', () => {
+    assert.equal(hasBeaconData(partialResolutionState()), false);
+  });
+});
+
+describe('reapertura automática por Secuencia (#55) — sin lógica nueva', () => {
+  it('un caso "resuelto" con una secuencia más nueva sin resolver de la misma víctima se sigue mostrando como activo', () => {
+    const resolved = state({ device_id_hash: 'aaa', sequence: 3, status: 'AYUDA', resuelto: true, resuelto_por: 'r1' });
+    const newerUnresolved = state({ device_id_hash: 'aaa', sequence: 4, status: 'AYUDA' });
+
+    const latest = latestPerDevice([resolved, newerUnresolved]);
+
+    assert.equal(latest.length, 1);
+    assert.equal(latest[0].sequence, 4);
+    assert.equal(resolutionInfo(latest[0]).resolved, false);
   });
 });
 
