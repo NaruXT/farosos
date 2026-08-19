@@ -1,5 +1,6 @@
 import BeaconRadio
 import Combine
+import DeviceIdentity
 import Foundation
 import NetworkRoleMachine
 import PacketCodec
@@ -70,7 +71,8 @@ final class EmergencyViewModel: ObservableObject {
     init(shakeDuration: TimeInterval = 3, confirmationWindow: TimeInterval = 20) {
         self.shakeDuration = shakeDuration
         self.confirmationWindow = confirmationWindow
-        let ownDeviceIdHash = KeychainDeviceIdentity.deviceIdHash()
+        let ownPublicKeyEd25519 = KeychainDeviceIdentity.publicKeyEd25519()
+        let ownDeviceIdHash = DeviceIdentityHash.fromPublicKey(ownPublicKeyEd25519)
         deviceIdHash = ownDeviceIdHash
         // Mitigación Sybil de Caso A (#50): costo único al instalar, no debe
         // competir con el hilo principal ni con batería en una emergencia —
@@ -83,6 +85,7 @@ final class EmergencyViewModel: ObservableObject {
         }
         participantUploadCoordinator = ParticipantUploadCoordinator(
             deviceIdHash: deviceIdHash,
+            publicKeyEd25519: ownPublicKeyEd25519,
             uploader: FirebaseParticipantUploader(),
             pendingProfile: KeychainParticipantStore.pendingProfile()
         )

@@ -5,5 +5,5 @@ import Foundation
 /// capa de app) para que `ParticipantUploadCoordinator` sea testeable sin
 /// tocar red.
 public protocol ParticipantUploading {
-    func upload(deviceIdHash: Data, profile: ParticipantProfile, completion: @escaping (Result<Void, Error>) -> Void)
+    func upload(deviceIdHash: Data, publicKeyEd25519: Data, profile: ParticipantProfile, completion: @escaping (Result<Void, Error>) -> Void)
 }

@@ -15,7 +15,14 @@ enum KeychainDeviceIdentity {
     private static let proofOfWorkAccount = "proofOfWorkNonce"
 
     static func deviceIdHash() -> Data {
-        DeviceIdentityHash.fromPublicKey(privateKey().publicKey.rawRepresentation)
+        DeviceIdentityHash.fromPublicKey(publicKeyEd25519())
+    }
+
+    /// Clave pública Ed25519 cruda (32 bytes) — la sube el registro opt-in
+    /// (#46) para que el backend pueda derivar `K_shared` por ECDH en Caso B
+    /// (#38/#48). Nunca la clave privada, que no sale del dispositivo.
+    static func publicKeyEd25519() -> Data {
+        privateKey().publicKey.rawRepresentation
     }
 
     /// Mitigación Sybil de Caso A (#50) — calcula el sello de Prueba de

@@ -157,6 +157,35 @@ describe('lectura de colección completa (Panel de rescate, #33)', () => {
   });
 });
 
+describe('participants — clave pública Ed25519 en el registro opt-in (#46/#47)', () => {
+  it('permite el registro incluyendo public_key_ed25519', async () => {
+    const anon = anonContext('gateway-phone-1');
+    const sample = buildParticipant({ public_key_ed25519: 'ab'.repeat(32) });
+
+    await assertSucceeds(setDoc(doc(anon.firestore(), 'participants', participantDocId(sample.device_id_hash)), sample));
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), 'participants', participantDocId(sample.device_id_hash)));
+      assert.equal(snap.data().public_key_ed25519, 'ab'.repeat(32));
+    });
+  });
+
+  it('deniega una confirmación de identidad Caso A que intenta colar public_key_ed25519', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'participants', 'abc123'), buildParticipant());
+    });
+
+    const attacker = anonContext('gateway-phone-3');
+    await assertFails(
+      setDoc(
+        doc(attacker.firestore(), 'participants', 'abc123'),
+        buildIdentityConfirmation({ public_key_ed25519: 'ff'.repeat(32) }),
+        { merge: true }
+      )
+    );
+  });
+});
+
 describe('participants — confirmación de identidad Caso A (#52/#53)', () => {
   it('permite crear un documento nuevo solo con la confirmación (víctima Caso A que nunca se registró)', async () => {
     const gateway = anonContext('gateway-phone-1');

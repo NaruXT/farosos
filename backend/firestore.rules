@@ -35,9 +35,11 @@ service cloud.firestore {
     }
 
     // Registro opt-in de la propia identidad (ADR-0003, #29/#30):
-    // `device_id_hash` + `name` + `contacto` opcional.
+    // `device_id_hash` + `name` + `contacto` opcional. `public_key_ed25519`
+    // (#46/#47) viaja en el mismo registro — es un dato del dispositivo, no
+    // ingresado por la persona, pero se sube junto al resto del perfil.
     function isSelfRegistrationWrite() {
-      return affectedParticipantKeys().hasOnly(['device_id_hash', 'name', 'contacto']);
+      return affectedParticipantKeys().hasOnly(['device_id_hash', 'public_key_ed25519', 'name', 'contacto']);
     }
 
     // Confirmación de identidad Caso A subida por un gateway ajeno (#44/#45,

@@ -16,12 +16,14 @@ public final class ParticipantUploadCoordinator {
     public var onUploadSucceeded: (() -> Void)?
 
     private let deviceIdHash: Data
+    private let publicKeyEd25519: Data
     private let uploader: ParticipantUploading
     private var pendingProfile: ParticipantProfile?
     private var isUploading = false
 
-    public init(deviceIdHash: Data, uploader: ParticipantUploading, pendingProfile: ParticipantProfile? = nil) {
+    public init(deviceIdHash: Data, publicKeyEd25519: Data, uploader: ParticipantUploading, pendingProfile: ParticipantProfile? = nil) {
         self.deviceIdHash = deviceIdHash
+        self.publicKeyEd25519 = publicKeyEd25519
         self.uploader = uploader
         self.pendingProfile = pendingProfile
     }
@@ -29,7 +31,7 @@ public final class ParticipantUploadCoordinator {
     public func connectivityDetected() {
         guard let profile = pendingProfile, !isUploading else { return }
         isUploading = true
-        uploader.upload(deviceIdHash: deviceIdHash, profile: profile) { [weak self] result in
+        uploader.upload(deviceIdHash: deviceIdHash, publicKeyEd25519: publicKeyEd25519, profile: profile) { [weak self] result in
             guard let self else { return }
             self.isUploading = false
             switch result {
