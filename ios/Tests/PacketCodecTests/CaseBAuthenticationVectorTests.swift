@@ -12,13 +12,6 @@ final class CaseBAuthenticationVectorTests: XCTestCase {
         TestVectorFile.hexToData(hex)
     }
 
-    func testBackendPublicKeyMatchesSharedConstant() throws {
-        let json = try loadVectorsJSON()
-        let ecdh = try XCTUnwrap(json["ecdh"] as? [String: Any])
-        let expected = hexToData(try XCTUnwrap(ecdh["backend_public_key_x25519_hex"] as? String))
-        XCTAssertEqual(CaseBAuthentication.backendPublicKeyX25519, expected)
-    }
-
     func testDeriveKSharedMatchesEveryVector() throws {
         let json = try loadVectorsJSON()
         let ecdh = try XCTUnwrap(json["ecdh"] as? [String: Any])

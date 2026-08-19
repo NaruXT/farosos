@@ -18,13 +18,6 @@ class CaseBAuthenticationVectorTest {
     private fun bytesToHex(bytes: ByteArray): String = TestVectorFile.bytesToHex(bytes)
 
     @Test
-    fun backendPublicKeyMatchesSharedConstant() {
-        val ecdh = loadVectorsJson().getJSONObject("ecdh")
-        val expected = hexToBytes(ecdh.getString("backend_public_key_x25519_hex"))
-        assertEquals(expected.toList(), CaseBAuthentication.BACKEND_PUBLIC_KEY_X25519.toList())
-    }
-
-    @Test
     fun deriveKSharedMatchesEveryVector() {
         val ecdh = loadVectorsJson().getJSONObject("ecdh")
         val vectors = ecdh.getJSONArray("vectors")

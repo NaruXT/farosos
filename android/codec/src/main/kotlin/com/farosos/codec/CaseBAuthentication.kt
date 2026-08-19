@@ -20,12 +20,17 @@ import javax.crypto.spec.SecretKeySpec
  */
 object CaseBAuthentication {
     /**
-     * Clave pública X25519 fija del backend (#39, `spec/test-vectors.json`
-     * clave `ecdh.backend_public_key_x25519_hex`) — constante no-secreta,
-     * embebida en el binario igual que `Company ID`/Service UUID.
+     * Clave pública X25519 real del backend (#48) — constante no-secreta,
+     * embebida en el binario igual que `Company ID`/Service UUID. Generada
+     * con entropía real (`backend/secrets/ecdh-backend-real-keypair.json`,
+     * fuera de git), distinta de la clave determinística de prueba que usan
+     * los vectores de `spec/test-vectors.json`
+     * (`ecdh.backend_public_key_x25519_hex`) — esa sigue existiendo solo
+     * para verificar la implementación del ECDH byte a byte, nunca se usa
+     * en producción. La privada real vive en Firebase Secret Manager.
      */
     val BACKEND_PUBLIC_KEY_X25519: ByteArray =
-        hexToBytes("78e77e1217a3c67319601127b85dc55fe714a23f11e0d22b25d4188c1255963b")
+        hexToBytes("4a5915cf192399053c2866bb76a781e92d4ca2e0c787067e2ce42fe44550ed67")
 
     /** `K_shared = X25519(clamp(SHA-512(privkey_Ed25519)[:32]), pubkey_X25519_backend)`. */
     fun deriveKShared(
