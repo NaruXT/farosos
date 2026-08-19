@@ -43,9 +43,7 @@ export function attachParticipantInfo(meshState, participantsByHash) {
   };
 }
 
-// `version` del layout Caso B (`spec/packet-format.md`) — mesh_states no
-// declara este campo todavía (#48/#49 sin implementar), queda reservado acá
-// para cuando esa ticket lo agregue.
+// `version` del layout Caso B (`spec/packet-format.md`).
 const CASO_B_VERSION = 2;
 
 /** Caso A = beacon del layout legado (`Versión=0x01`), la única forma que
@@ -62,11 +60,42 @@ export function isCasoA(meshState) {
  * permanente de "no verificado" — la firma de Caso A solo autentica
  * identidad, nunca el contenido del beacon (límite aceptado,
  * `spec/packet-format.md` decisión 18) — con o sin la indicación adicional
- * de identidad confirmada. Caso B queda sin marca por este ticket; su
- * propio estado de verificación es responsabilidad de #49. */
+ * de identidad confirmada; `verified` siempre es `false` para Caso A, sin
+ * excepción. Caso B refleja `mac_verificado`, el campo que escribe la
+ * Cloud Function de #48 — comparación estricta contra `true` (#49): si
+ * todavía no llegó a procesarlo (campo ausente) se trata como no
+ * verificado, nunca como verificado por defecto. Un Caso B sin verificar
+ * nunca se oculta ni se distingue de "no existe" — sigue apareciendo en la
+ * lista, con la marca puesta acá. */
 export function verificationLabel(meshState) {
-  if (!isCasoA(meshState)) return { unverified: false, identityConfirmed: false };
-  return { unverified: true, identityConfirmed: meshState.identityConfirmedCaseA === true };
+  if (isCasoA(meshState)) {
+    return { unverified: true, verified: false, identityConfirmed: meshState.identityConfirmedCaseA === true };
+  }
+  const verified = meshState.mac_verificado === true;
+  return { unverified: !verified, verified, identityConfirmed: false };
+}
+
+// `Estado` del layout legado (`spec/packet-format.md`) — mismos nombres que
+// ya escribe `FirebaseMeshStateUploader`/`FirebaseMeshStateUploader.kt` para
+// Caso A (string). La Cloud Function de #48 escribe el `status` de Caso B
+// como el entero crudo del wire (0-4), porque eso es lo que necesita para
+// recalcular el MAC — `statusLabel` traduce ambas formas a la misma etiqueta
+// para que el resto del panel no tenga que distinguir Caso A de Caso B.
+const STATUS_LABEL_BY_CODE = {
+  0: 'SIN_CONFIRMAR',
+  1: 'OK',
+  2: 'AYUDA',
+  3: 'SILENCIO_TIMEOUT',
+  4: 'GATEWAY_DISPONIBLE',
+};
+
+/** `status` listo para mostrar, sin importar si el documento es Caso A
+ * (ya viene como string) o Caso B (entero crudo del wire, #48). Un código
+ * numérico desconocido se devuelve como string en vez de reventar. */
+export function statusLabel(meshState) {
+  const { status } = meshState;
+  if (typeof status !== 'number') return status;
+  return STATUS_LABEL_BY_CODE[status] ?? String(status);
 }
 
 /** Orden de la vista de estado actual: más reciente primero. */

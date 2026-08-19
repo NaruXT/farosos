@@ -144,6 +144,12 @@ th {
   font-size: 0.8rem;
 }
 
+.verification-verified {
+  color: var(--color-success);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
 .verification-confirmed {
   color: var(--color-success);
   font-size: 0.8rem;

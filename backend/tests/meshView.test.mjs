@@ -6,6 +6,7 @@ import {
   attachParticipantInfo,
   isCasoA,
   verificationLabel,
+  statusLabel,
   sortByMostRecent,
 } from '../public/js/meshView.mjs';
 
@@ -147,21 +148,55 @@ describe('isCasoA', () => {
 });
 
 describe('verificationLabel', () => {
-  it('Caso A sin identidad confirmada: unverified true, identityConfirmed false', () => {
+  it('Caso A sin identidad confirmada: unverified true, verified false, identityConfirmed false', () => {
     const enriched = attachParticipantInfo(state(), {});
-    assert.deepEqual(verificationLabel(enriched), { unverified: true, identityConfirmed: false });
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, verified: false, identityConfirmed: false });
   });
 
-  it('Caso A con identidad confirmada: unverified true, identityConfirmed true', () => {
+  it('Caso A con identidad confirmada: unverified true, verified false, identityConfirmed true', () => {
     const enriched = attachParticipantInfo(state({ device_id_hash: 'aaa' }), {
       aaa: { identidad_verificada_caso_a: true },
     });
-    assert.deepEqual(verificationLabel(enriched), { unverified: true, identityConfirmed: true });
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, verified: false, identityConfirmed: true });
   });
 
-  it('Caso B: unverified false, identityConfirmed false — sin marca por este ticket (#54)', () => {
+  it('Caso B con MAC válido (#48 lo marcó mac_verificado: true): unverified false, verified true', () => {
+    const enriched = attachParticipantInfo(state({ version: 2, mac_verificado: true }), {});
+    assert.deepEqual(verificationLabel(enriched), { unverified: false, verified: true, identityConfirmed: false });
+  });
+
+  it('Caso B con MAC inválido (#48 lo marcó mac_verificado: false): unverified true, verified false — nunca se filtra (#49)', () => {
+    const enriched = attachParticipantInfo(state({ version: 2, mac_verificado: false }), {});
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, verified: false, identityConfirmed: false });
+  });
+
+  it('Caso B sin mac_verificado todavía (la función de #48 no llegó a procesarlo) se trata como no verificado, no como verificado por defecto', () => {
     const enriched = attachParticipantInfo(state({ version: 2 }), {});
-    assert.deepEqual(verificationLabel(enriched), { unverified: false, identityConfirmed: false });
+    assert.deepEqual(verificationLabel(enriched), { unverified: true, verified: false, identityConfirmed: false });
+  });
+});
+
+// Caso A ya escribe `status` como string ('OK', 'AYUDA', ...) — la Cloud
+// Function de #48 escribe el `status` de Caso B como el entero crudo del
+// wire (0-4, necesario para recalcular el MAC). Sin esto, un beacon Caso B
+// real rompe `statusCell` completo (`status.toLowerCase is not a
+// function`), lo que oculta TODA la tabla — descubierto verificando #49 en
+// vivo contra el panel real, viola el AC "nunca se filtra de la lista".
+describe('statusLabel', () => {
+  it('Caso A: status ya es el string, se devuelve tal cual', () => {
+    assert.equal(statusLabel(state({ status: 'AYUDA' })), 'AYUDA');
+  });
+
+  it('Caso B: status es el entero crudo del wire, se traduce al mismo string que usa Caso A', () => {
+    assert.equal(statusLabel(state({ version: 2, status: 2 })), 'AYUDA');
+    assert.equal(statusLabel(state({ version: 2, status: 0 })), 'SIN_CONFIRMAR');
+    assert.equal(statusLabel(state({ version: 2, status: 1 })), 'OK');
+    assert.equal(statusLabel(state({ version: 2, status: 3 })), 'SILENCIO_TIMEOUT');
+    assert.equal(statusLabel(state({ version: 2, status: 4 })), 'GATEWAY_DISPONIBLE');
+  });
+
+  it('un código numérico fuera de rango no revienta — se devuelve como string crudo', () => {
+    assert.equal(statusLabel(state({ version: 2, status: 99 })), '99');
   });
 });
 

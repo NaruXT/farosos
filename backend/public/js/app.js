@@ -11,7 +11,15 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { latestPerDevice, historyForDevice, attachParticipantInfo, verificationLabel, sortByMostRecent } from './meshView.mjs';
+import {
+  latestPerDevice,
+  historyForDevice,
+  attachParticipantInfo,
+  isCasoA,
+  verificationLabel,
+  statusLabel,
+  sortByMostRecent,
+} from './meshView.mjs';
 
 const STATUS_LABELS = {
   SIN_CONFIRMAR: 'Sin confirmar',
@@ -136,7 +144,7 @@ function renderCurrentState() {
     contactCell.textContent = state.contact ?? '—';
     row.appendChild(contactCell);
 
-    row.appendChild(statusCell(state.status));
+    row.appendChild(statusCell(state));
     row.appendChild(locationCell(state.latitude, state.longitude));
     row.appendChild(timeCell(state.uploaded_at));
 
@@ -174,7 +182,7 @@ function renderHistory(deviceIdHash) {
     sequenceCell.textContent = String(state.sequence);
     row.appendChild(sequenceCell);
 
-    row.appendChild(statusCell(state.status));
+    row.appendChild(statusCell(state));
     row.appendChild(locationCell(state.latitude, state.longitude));
     row.appendChild(timeCell(state.uploaded_at));
     row.appendChild(verificationCell(state));
@@ -183,18 +191,28 @@ function renderHistory(deviceIdHash) {
   }
 }
 
-/** DOM de la columna "Verificación" (#54) a partir de `verificationLabel`
+/** DOM de la columna "Verificación" (#54/#49) a partir de `verificationLabel`
  * (`meshView.mjs`, testeada) — acá solo se construyen los elementos, la
- * decisión de qué mostrar vive en la función pura. */
+ * decisión de qué mostrar vive en la función pura. Caso A mantiene
+ * exactamente el texto de antes ("No verificado", #49 AC3); Caso B señalado
+ * usa un texto propio ("MAC inválido") porque la razón es distinta —
+ * `isCasoA` solo decide el texto, no si se muestra algo. */
 function verificationCell(state) {
   const cell = document.createElement('td');
   cell.className = 'verification';
   const label = verificationLabel(state);
-  if (!label.unverified) return cell;
+
+  if (label.verified) {
+    const verified = document.createElement('span');
+    verified.className = 'verification-verified';
+    verified.textContent = 'Verificado';
+    cell.appendChild(verified);
+    return cell;
+  }
 
   const unverified = document.createElement('span');
   unverified.className = 'verification-unverified';
-  unverified.textContent = 'No verificado';
+  unverified.textContent = isCasoA(state) ? 'No verificado' : 'MAC inválido';
   cell.appendChild(unverified);
 
   if (label.identityConfirmed) {
@@ -207,10 +225,14 @@ function verificationCell(state) {
   return cell;
 }
 
-function statusCell(status) {
+/** `statusLabel` (`meshView.mjs`, testeada) normaliza el `status` crudo de
+ * Caso A (ya string) y Caso B (entero del wire, #48) a la misma etiqueta
+ * antes de que esta función toque el DOM. */
+function statusCell(state) {
+  const label = statusLabel(state);
   const cell = document.createElement('td');
-  cell.textContent = STATUS_LABELS[status] ?? status;
-  cell.className = 'status status-' + status.toLowerCase();
+  cell.textContent = STATUS_LABELS[label] ?? label;
+  cell.className = 'status status-' + label.toLowerCase();
   return cell;
 }
 
