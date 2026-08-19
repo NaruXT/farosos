@@ -10,13 +10,16 @@ private class FakeUploader : ParticipantUploading {
         private set
     var lastDeviceIdHash: ByteArray? = null
         private set
+    var lastPublicKeyEd25519: ByteArray? = null
+        private set
     var lastProfile: ParticipantProfile? = null
         private set
     private var pendingOnResult: ((Result<Unit>) -> Unit)? = null
 
-    override fun upload(deviceIdHash: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit) {
+    override fun upload(deviceIdHash: ByteArray, publicKeyEd25519: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit) {
         uploadCallCount += 1
         lastDeviceIdHash = deviceIdHash
+        lastPublicKeyEd25519 = publicKeyEd25519
         lastProfile = profile
         pendingOnResult = onResult
     }
@@ -32,11 +35,12 @@ private class UploadException : Exception()
 
 class ParticipantUploadCoordinatorTest {
     private val deviceIdHash = byteArrayOf(0x01, 0x02, 0x03)
+    private val publicKeyEd25519 = ByteArray(32) { 0xAB.toByte() }
 
     @Test
     fun connectivityDetectedDoesNothingWithoutPendingProfile() {
         val uploader = FakeUploader()
-        val coordinator = ParticipantUploadCoordinator(deviceIdHash, uploader)
+        val coordinator = ParticipantUploadCoordinator(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, uploader = uploader)
 
         coordinator.connectivityDetected()
 
@@ -47,12 +51,13 @@ class ParticipantUploadCoordinatorTest {
     fun connectivityDetectedUploadsProfilePassedAtInit() {
         val uploader = FakeUploader()
         val profile = ParticipantProfile(name = "Ana", contact = "+51999999999")
-        val coordinator = ParticipantUploadCoordinator(deviceIdHash, uploader, pendingProfile = profile)
+        val coordinator = ParticipantUploadCoordinator(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, uploader = uploader, pendingProfile = profile)
 
         coordinator.connectivityDetected()
 
         assertEquals(1, uploader.uploadCallCount)
         assertEquals(deviceIdHash, uploader.lastDeviceIdHash)
+        assertEquals(publicKeyEd25519, uploader.lastPublicKeyEd25519)
         assertEquals(profile, uploader.lastProfile)
     }
 
@@ -60,7 +65,7 @@ class ParticipantUploadCoordinatorTest {
     fun successfulUploadFiresCallbackAndStopsFurtherAttempts() {
         val uploader = FakeUploader()
         val profile = ParticipantProfile(name = "Ana", contact = null)
-        val coordinator = ParticipantUploadCoordinator(deviceIdHash, uploader, pendingProfile = profile)
+        val coordinator = ParticipantUploadCoordinator(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, uploader = uploader, pendingProfile = profile)
         var succeeded = false
         coordinator.onUploadSucceeded = { succeeded = true }
 
@@ -78,7 +83,7 @@ class ParticipantUploadCoordinatorTest {
     fun failedUploadKeepsProfilePendingForNextConnectivitySignal() {
         val uploader = FakeUploader()
         val profile = ParticipantProfile(name = "Ana", contact = null)
-        val coordinator = ParticipantUploadCoordinator(deviceIdHash, uploader, pendingProfile = profile)
+        val coordinator = ParticipantUploadCoordinator(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, uploader = uploader, pendingProfile = profile)
         var succeeded = false
         coordinator.onUploadSucceeded = { succeeded = true }
 
@@ -96,7 +101,7 @@ class ParticipantUploadCoordinatorTest {
     fun connectivityDetectedWhileUploadInFlightDoesNotDispatchTwice() {
         val uploader = FakeUploader()
         val profile = ParticipantProfile(name = "Ana", contact = null)
-        val coordinator = ParticipantUploadCoordinator(deviceIdHash, uploader, pendingProfile = profile)
+        val coordinator = ParticipantUploadCoordinator(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, uploader = uploader, pendingProfile = profile)
 
         coordinator.connectivityDetected()
         coordinator.connectivityDetected() // el primer intento sigue en vuelo, no debe duplicar la subida

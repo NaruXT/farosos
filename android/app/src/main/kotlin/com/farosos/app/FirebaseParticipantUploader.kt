@@ -14,13 +14,14 @@ import com.google.firebase.firestore.firestore
  * la clase concreta real vive sin tests en la capa de app.
  */
 class FirebaseParticipantUploader : ParticipantUploading {
-    override fun upload(deviceIdHash: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit) {
+    override fun upload(deviceIdHash: ByteArray, publicKeyEd25519: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit) {
         FirebaseAuthSession.ensureSignedIn { signInResult ->
             signInResult.fold(
                 onSuccess = {
                     val hashHex = ParticipantIds.deviceIdHashHex(deviceIdHash)
                     val data = mutableMapOf<String, Any>(
                         "device_id_hash" to hashHex,
+                        "public_key_ed25519" to publicKeyEd25519.joinToString("") { "%02x".format(it) },
                         "name" to profile.name
                     )
                     profile.contact?.let { data["contacto"] = it }

@@ -27,7 +27,15 @@ object DeviceIdentity {
     private const val KEY_PROOF_OF_WORK_NONCE = "proofOfWorkNonce"
 
     fun deviceIdHash(context: Context): ByteArray =
-        DeviceIdentityHash.fromPublicKey(privateKey(context).generatePublicKey().encoded)
+        DeviceIdentityHash.fromPublicKey(publicKeyEd25519(context))
+
+    /**
+     * Clave pública Ed25519 cruda (32 bytes) — la sube el registro opt-in
+     * (#47) para que el backend pueda derivar `K_shared` por ECDH en Caso B
+     * (#38/#48). Nunca la clave privada, que no sale del dispositivo.
+     */
+    fun publicKeyEd25519(context: Context): ByteArray =
+        privateKey(context).generatePublicKey().encoded
 
     /**
      * Mitigación Sybil de Caso A (#51) — calcula el sello de Prueba de

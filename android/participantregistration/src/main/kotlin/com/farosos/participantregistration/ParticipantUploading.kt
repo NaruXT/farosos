@@ -7,5 +7,5 @@ package com.farosos.participantregistration
  * tocar red.
  */
 interface ParticipantUploading {
-    fun upload(deviceIdHash: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit)
+    fun upload(deviceIdHash: ByteArray, publicKeyEd25519: ByteArray, profile: ParticipantProfile, onResult: (Result<Unit>) -> Unit)
 }

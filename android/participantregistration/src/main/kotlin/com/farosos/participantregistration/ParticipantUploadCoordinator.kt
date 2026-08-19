@@ -16,6 +16,7 @@ package com.farosos.participantregistration
  */
 class ParticipantUploadCoordinator(
     private val deviceIdHash: ByteArray,
+    private val publicKeyEd25519: ByteArray,
     private val uploader: ParticipantUploading,
     private var pendingProfile: ParticipantProfile? = null
 ) {
@@ -27,7 +28,7 @@ class ParticipantUploadCoordinator(
         val profile = pendingProfile ?: return
         if (isUploading) return
         isUploading = true
-        uploader.upload(deviceIdHash, profile) { result ->
+        uploader.upload(deviceIdHash = deviceIdHash, publicKeyEd25519 = publicKeyEd25519, profile = profile) { result ->
             isUploading = false
             result.onSuccess {
                 pendingProfile = null

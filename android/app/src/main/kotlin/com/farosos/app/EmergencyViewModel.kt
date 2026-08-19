@@ -18,6 +18,7 @@ import com.farosos.beaconradio.RelayPolicy
 import com.farosos.beaconradio.RelayQueue
 import com.farosos.beaconradio.VerifiedIdentityRegistry
 import com.farosos.codec.BeaconPacketCodec
+import com.farosos.deviceidentity.DeviceIdentityHash
 import com.farosos.networkrole.NetworkRole
 import com.farosos.networkrole.NetworkRoleMachine
 import com.farosos.participantregistration.ParticipantUploadCoordinator
@@ -65,7 +66,8 @@ class EmergencyViewModel @JvmOverloads constructor(
     private var countdownDeadlineMillis: Long? = null
     private var countdownRunnable: Runnable? = null
 
-    private val deviceIdHash: ByteArray = DeviceIdentity.deviceIdHash(application)
+    private val ownPublicKeyEd25519: ByteArray = DeviceIdentity.publicKeyEd25519(application)
+    private val deviceIdHash: ByteArray = DeviceIdentityHash.fromPublicKey(ownPublicKeyEd25519)
     private val dedupCache = DedupCache()
     private val nonceGenerator = RandomNonceGenerator()
     private val advertiser = BleAdvertiser(application)
@@ -75,6 +77,7 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val connectivityMonitor = ConnectivityMonitor(application)
     private val participantUploadCoordinator = ParticipantUploadCoordinator(
         deviceIdHash = deviceIdHash,
+        publicKeyEd25519 = ownPublicKeyEd25519,
         uploader = FirebaseParticipantUploader(),
         pendingProfile = ParticipantStore.pendingProfile(application)
     )
