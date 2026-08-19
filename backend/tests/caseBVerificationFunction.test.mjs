@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { waitForField, createTrackedWriter } from './firestoreFunctionTestHelpers.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Misma clave real que backend/functions/.secret.local le da al emulador de
@@ -28,16 +29,7 @@ const realBackendKeypair = JSON.parse(
 );
 
 let db;
-
-async function waitForField(docRef, field, { timeoutMs = 10000, intervalMs = 200 } = {}) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const snap = await docRef.get();
-    if (snap.get(field) !== undefined) return snap.get(field);
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`timeout esperando el campo "${field}" en ${docRef.path}`);
-}
+const writer = createTrackedWriter();
 
 before(async () => {
   initializeApp({ projectId: 'farosos-rules-test' });
@@ -55,15 +47,7 @@ before(async () => {
   await warmUpRef.delete();
 });
 
-beforeEach(async () => {
-  // No hay un `clearFirestore()` equivalente en el Admin SDK — se borran
-  // las dos colecciones que este archivo usa entre tests para que no se
-  // pisen entre sí (mismo device_id_hash reusado a propósito).
-  for (const name of ['participants', 'mesh_states']) {
-    const snap = await db.collection(name).get();
-    await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
-  }
-});
+beforeEach(() => writer.cleanup());
 
 // `device_id_hash = SHA-256(pubkey Ed25519)[:6]` — misma derivación que
 // `DeviceIdentityHash` (iOS/Android, #39/#40/#41), para que el fixture de
@@ -92,7 +76,7 @@ function caseBFields(deviceIdHash, overrides = {}) {
 describe('Cloud Function de verificación de MAC (#48)', () => {
   it('marca verificado un beacon Caso B con MAC válido', async () => {
     const device = randomDeviceIdentity();
-    await db.collection('participants').doc(device.deviceIdHash).set({
+    await writer.set(db.collection('participants').doc(device.deviceIdHash), {
       device_id_hash: device.deviceIdHash,
       public_key_ed25519: bytesToHex(device.publicKey),
       name: 'Prueba de integración #48',
@@ -103,7 +87,7 @@ describe('Cloud Function de verificación de MAC (#48)', () => {
     const mac = computeMac(kShared, authenticatedContent(fields));
 
     const docRef = db.collection('mesh_states').doc(`${device.deviceIdHash}_0`);
-    await docRef.set({
+    await writer.set(docRef, {
       version: 2,
       device_id_hash: device.deviceIdHash,
       message_type: fields.messageType,
@@ -123,14 +107,14 @@ describe('Cloud Function de verificación de MAC (#48)', () => {
 
   it('marca señalado (nunca borra) un beacon Caso B con MAC inválido', async () => {
     const device = randomDeviceIdentity();
-    await db.collection('participants').doc(device.deviceIdHash).set({
+    await writer.set(db.collection('participants').doc(device.deviceIdHash), {
       device_id_hash: device.deviceIdHash,
       public_key_ed25519: bytesToHex(device.publicKey),
       name: 'Prueba de integración #48',
     });
 
     const docRef = db.collection('mesh_states').doc(`${device.deviceIdHash}_0`);
-    await docRef.set({
+    await writer.set(docRef, {
       version: 2,
       device_id_hash: device.deviceIdHash,
       message_type: 0,
@@ -153,7 +137,7 @@ describe('Cloud Function de verificación de MAC (#48)', () => {
 
   it('no toca beacons Versión=0x01 (Caso A) — sin campo version', async () => {
     const docRef = db.collection('mesh_states').doc('legacy_0');
-    await docRef.set({
+    await writer.set(docRef, {
       device_id_hash: 'legacy',
       status: 'AYUDA',
       latitude: -12.05,

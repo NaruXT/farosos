@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --project farosos-rules-test --only firestore,auth,functions \"node --test tests/*.test.mjs\"",
+    "test": "firebase emulators:exec --project farosos-rules-test --only firestore,auth,functions \"node --test --test-concurrency=1 tests/*.test.mjs\"",
     "verify-dedup": "node scripts/verify-dedup.mjs",
     "generate-beacon-auth-vectors": "node scripts/generate-beacon-auth-vectors.mjs"
   },

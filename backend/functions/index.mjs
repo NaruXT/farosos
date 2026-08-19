@@ -18,8 +18,9 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { defineSecret } from 'firebase-functions/params';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { verifyCaseBMac } from './lib/caseBVerification.mjs';
+import { computeProximityVerified, shouldComputeProximity } from './lib/resolutionProximity.mjs';
 
 const backendEcdhPrivateKeyX25519Hex = defineSecret('BACKEND_ECDH_PRIVATE_KEY_X25519_HEX');
 
@@ -61,3 +62,27 @@ export const verifyCaseBMeshState = onDocumentCreated(
     await snapshot.ref.set({ mac_verificado: verified }, { merge: true });
   }
 );
+
+// Verificación de proximidad de "resuelto" (#55/#56/#59) — a diferencia de
+// arriba, dispara con `onDocumentWritten` (no `onDocumentCreated`): la
+// resolución llega como un `merge` sobre un documento que puede ya existir
+// (subido antes por un gateway) o crearse en ese mismo momento (si nadie
+// subió todavía esa secuencia de la víctima, #55). La guarda contra el loop
+// de re-disparo no es del trigger sino de `shouldComputeProximity()`: solo
+// procesa mientras `proximidad_verificada` no esté definida todavía — la
+// propia escritura de vuelta de esta función dispara una invocación nueva
+// que se ve a sí misma como "ya procesada" y no hace nada.
+export const verifyResolutionProximity = onDocumentWritten('mesh_states/{docId}', async (event) => {
+  const afterSnapshot = event.data?.after;
+  if (!afterSnapshot?.exists) return;
+
+  const meshState = afterSnapshot.data();
+  if (!shouldComputeProximity(meshState)) return;
+
+  // `undefined` no es un valor válido de Firestore — `null` es la forma de
+  // "sin verificar" que sí se puede escribir (AC de #59: nunca oculta ni
+  // descarta el documento, mismo principio que `mac_verificado`).
+  const verified = computeProximityVerified(meshState) ?? null;
+
+  await afterSnapshot.ref.set({ proximidad_verificada: verified }, { merge: true });
+});
