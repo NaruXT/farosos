@@ -4,6 +4,7 @@ node_modules/
 .env
 *-service-account.json
 secrets/
+functions/.secret.local
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
