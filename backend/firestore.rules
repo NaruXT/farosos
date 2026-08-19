@@ -27,11 +27,43 @@ service cloud.firestore {
     }
 
     // Campos que esta escritura agrega/cambia respecto al documento previo
-    // — `resource` es `null` en un `create` (no hay documento previo), así
-    // que se compara contra un mapa vacío en ese caso (todos los campos
-    // entrantes cuentan como "afectados").
-    function affectedParticipantKeys() {
+    // — `resource` es `null` en un `create` (no hay documento previo,
+    // incluida la creación parcial de una resolución que llega antes que el
+    // beacon original de la víctima, #55/#56), así que se compara contra un
+    // mapa vacío en ese caso (todos los campos entrantes cuentan como
+    // "afectados"). Compartida entre `mesh_states` y `participants` —
+    // `resource` ya apunta al documento correcto según el path de la
+    // request, sin necesitar una versión por colección.
+    function affectedKeys() {
       return request.resource.data.diff(resource != null ? resource.data : {}).affectedKeys();
+    }
+
+    // Campos de "resuelto" (#55) y "atendiendo" — señales externas
+    // superpuestas sobre un `mesh_states`, subidas directo por el resolutor
+    // (sin pasar por la malla BLE, ver #55). Compartida entre
+    // `touchesResolutionFields()` e `isResolutionWrite()` para no repetir
+    // la lista dos veces.
+    function resolutionFields() {
+      return [
+        'resuelto', 'resuelto_por', 'resuelto_en',
+        'resolutor_latitud_e7', 'resolutor_longitud_e7',
+        'proximidad_verificada', 'corroborado_por_rescatista',
+        'atendido_por'
+      ];
+    }
+
+    function touchesResolutionFields() {
+      return affectedKeys().hasAny(resolutionFields());
+    }
+
+    // Nunca deben poder cambiar los campos del beacon original (`status`,
+    // ubicación, `mac`, etc.). `device_id_hash` y `sequence` quedan
+    // permitidos porque hacen falta para que `matchesMeshStateId` valide la
+    // creación parcial cuando el documento todavía no existe (si ya existe,
+    // el merge los trae del documento previo sin cambiarlos, así que no
+    // aparecen como "afectados").
+    function isResolutionWrite() {
+      return affectedKeys().hasOnly(resolutionFields().concat(['device_id_hash', 'sequence']));
     }
 
     // Registro opt-in de la propia identidad (ADR-0003, #29/#30):
@@ -39,20 +71,21 @@ service cloud.firestore {
     // (#46/#47) viaja en el mismo registro — es un dato del dispositivo, no
     // ingresado por la persona, pero se sube junto al resto del perfil.
     function isSelfRegistrationWrite() {
-      return affectedParticipantKeys().hasOnly(['device_id_hash', 'public_key_ed25519', 'name', 'contacto']);
+      return affectedKeys().hasOnly(['device_id_hash', 'public_key_ed25519', 'name', 'contacto']);
     }
 
     // Confirmación de identidad Caso A subida por un gateway ajeno (#44/#45,
     // #52/#53) — nunca puede tocar `name`/`contacto` de un documento que no
     // es el propio, a diferencia del registro opt-in de arriba.
     function isIdentityConfirmationWrite() {
-      return affectedParticipantKeys().hasOnly(['device_id_hash', 'identidad_verificada_caso_a']);
+      return affectedKeys().hasOnly(['device_id_hash', 'identidad_verificada_caso_a']);
     }
 
     match /mesh_states/{docId} {
       allow read: if isRescuePanel();
       allow create, update: if isAuthenticated() &&
-        matchesMeshStateId(docId, request.resource.data);
+        matchesMeshStateId(docId, request.resource.data) &&
+        (!touchesResolutionFields() || isResolutionWrite());
     }
 
     match /participants/{docId} {

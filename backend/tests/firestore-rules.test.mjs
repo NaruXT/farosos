@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, arrayUnion } from 'firebase/firestore';
 import { meshStateDocId, participantDocId } from '../lib/ids.mjs';
 
 let testEnv;
@@ -233,6 +233,123 @@ describe('participants — confirmación de identidad Caso A (#52/#53)', () => {
       setDoc(
         doc(attacker.firestore(), 'participants', 'abc123'),
         buildIdentityConfirmation({ name: 'Nombre falso' }),
+        { merge: true }
+      )
+    );
+  });
+});
+
+describe('mesh_states — resolución/atendiendo (#55/#56)', () => {
+  it('permite marcar "resuelto" sobre un mesh_state ya existente', async () => {
+    const sample = buildMeshState();
+    const id = meshStateDocId(sample.device_id_hash, sample.sequence);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', id), sample);
+    });
+
+    const resolver = anonContext('resolver-phone-1');
+    await assertSucceeds(
+      setDoc(
+        doc(resolver.firestore(), 'mesh_states', id),
+        {
+          resuelto: true,
+          resuelto_por: 'resolver-hash',
+          resuelto_en: 1755000100,
+          resolutor_latitud_e7: -120500000,
+          resolutor_longitud_e7: -770400000,
+        },
+        { merge: true }
+      )
+    );
+  });
+
+  it('permite marcar "atendiendo" (arrayUnion) creando el documento parcial si todavía no existe', async () => {
+    const resolver = anonContext('resolver-phone-1');
+    const id = meshStateDocId('nuevo123', 7);
+
+    await assertSucceeds(
+      setDoc(
+        doc(resolver.firestore(), 'mesh_states', id),
+        {
+          device_id_hash: 'nuevo123',
+          sequence: 7,
+          atendido_por: arrayUnion({ device_id_hash: 'resolver-hash', marcado_en: 1755000100 }),
+        },
+        { merge: true }
+      )
+    );
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), 'mesh_states', id));
+      assert.equal(snap.exists(), true);
+      assert.equal(snap.data().status, undefined, 'documento parcial, sin campos del beacon original');
+    });
+  });
+
+  it('acumula múltiples entradas de "atendido_por" de distintos resolutores sin pisarlas', async () => {
+    const sample = buildMeshState();
+    const id = meshStateDocId(sample.device_id_hash, sample.sequence);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', id), sample);
+    });
+
+    await assertSucceeds(
+      setDoc(
+        doc(anonContext('rescuer-1').firestore(), 'mesh_states', id),
+        { atendido_por: arrayUnion({ device_id_hash: 'r1', marcado_en: 1 }) },
+        { merge: true }
+      )
+    );
+    await assertSucceeds(
+      setDoc(
+        doc(anonContext('rescuer-2').firestore(), 'mesh_states', id),
+        { atendido_por: arrayUnion({ device_id_hash: 'r2', marcado_en: 2 }) },
+        { merge: true }
+      )
+    );
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), 'mesh_states', id));
+      assert.equal(snap.data().atendido_por.length, 2);
+    });
+  });
+
+  it('deniega una escritura que mezcla campos de resolución con campos del beacon original', async () => {
+    const sample = buildMeshState();
+    const id = meshStateDocId(sample.device_id_hash, sample.sequence);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', id), sample);
+    });
+
+    const attacker = anonContext('attacker-phone');
+    await assertFails(
+      setDoc(
+        doc(attacker.firestore(), 'mesh_states', id),
+        {
+          status: 'OK',
+          resuelto: true,
+          resuelto_por: 'attacker-hash',
+        },
+        { merge: true }
+      )
+    );
+  });
+
+  it('deniega una escritura que mezcla "atendido_por" con un campo del beacon original', async () => {
+    const sample = buildMeshState();
+    const id = meshStateDocId(sample.device_id_hash, sample.sequence);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'mesh_states', id), sample);
+    });
+
+    const attacker = anonContext('attacker-phone');
+    await assertFails(
+      setDoc(
+        doc(attacker.firestore(), 'mesh_states', id),
+        {
+          latitude: 0,
+          atendido_por: arrayUnion({ device_id_hash: 'attacker-hash', marcado_en: 1 }),
+        },
         { merge: true }
       )
     );
