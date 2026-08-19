@@ -96,6 +96,11 @@ class EmergencyViewModel @JvmOverloads constructor(
     private var isForeground = false
 
     init {
+        // Mitigación Sybil de Caso A (#51): costo único al instalar, no debe
+        // competir con el hilo principal ni con batería en una emergencia —
+        // se dispara en un hilo aparte y se persiste; una corrida posterior
+        // la encuentra ya calculada y no repite el trabajo.
+        Thread { DeviceIdentity.proofOfWorkSeal(application, deviceIdHash) }.start()
         participantUploadCoordinator.onUploadSucceeded = { ParticipantStore.markUploaded(application) }
         appendLogEntry(LogEntry.Kind.Info("device_id_hash propio: ${deviceIdHash.shortHex()}"))
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))

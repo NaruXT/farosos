@@ -415,5 +415,23 @@
       "content_hex": "1dcfc6d36638010000000000000000d421546500ff",
       "expected_mac_hex": "570b7303"
     }
+  ],
+  "pow_vectors": [
+    {
+      "name": "pow_dificultad_baja_12_bits",
+      "$comment": "Prueba de Trabajo Sybil de Caso A (#38/#50/#51) — nonce_hex es el sello hashcash: SHA-256(device_id_hash || nonce)[8 bytes big-endian] tiene >= difficulty_bits ceros a la izquierda. Dificultad baja (no la de producción) para mantener el suite rápido en ambas plataformas.",
+      "device_id_hash_hex": "010203040506",
+      "difficulty_bits": 12,
+      "nonce_hex": "0000000000002c8a",
+      "expected_digest_hex": "0002e227aff8ecfa17d332c951d55d48feefebd086b255d53d90ef9c1bce3cbb"
+    },
+    {
+      "name": "pow_dificultad_produccion_20_bits",
+      "$comment": "Mismo device_id_hash que el vector anterior, a la dificultad real de producción (difficultyBits = 20, decisión previa a #50/#51, 2026-08-18).",
+      "device_id_hash_hex": "010203040506",
+      "difficulty_bits": 20,
+      "nonce_hex": "00000000000a0741",
+      "expected_digest_hex": "00000be02aab3cd65cdb253dbd259105084b03b99fa2969fc5e01237428abfc4"
+    }
   ]
 }

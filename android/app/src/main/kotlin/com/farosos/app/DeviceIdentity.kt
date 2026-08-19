@@ -3,6 +3,7 @@ package com.farosos.app
 import android.content.Context
 import android.util.Base64
 import com.farosos.deviceidentity.DeviceIdentityHash
+import com.farosos.deviceidentity.ProofOfWork
 import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator
 import org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
@@ -23,9 +24,35 @@ import java.security.SecureRandom
 object DeviceIdentity {
     private const val PREFS_FILE_NAME = "com.farosos.app.device_identity"
     private const val KEY_ED25519_PRIVATE = "ed25519PrivateKey"
+    private const val KEY_PROOF_OF_WORK_NONCE = "proofOfWorkNonce"
 
     fun deviceIdHash(context: Context): ByteArray =
         DeviceIdentityHash.fromPublicKey(privateKey(context).generatePublicKey().encoded)
+
+    /**
+     * Mitigación Sybil de Caso A (#51) — calcula el sello de Prueba de
+     * Trabajo sobre `deviceIdHash` una única vez y lo persiste, igual que la
+     * identidad Ed25519. Si ya hay un sello guardado y sigue siendo válido
+     * (mismo `deviceIdHash`, cumple `ProofOfWork.DIFFICULTY_BITS` actual) lo
+     * reutiliza sin recalcular; si no, lo recalcula — cubre tanto la primera
+     * vez como un cambio futuro de dificultad o de identidad
+     * (reinstalación). Recibe `deviceIdHash` en vez de volver a derivarlo,
+     * porque quien llama ya lo tiene.
+     */
+    fun proofOfWorkSeal(context: Context, deviceIdHash: ByteArray): ByteArray {
+        val prefs = EncryptedPrefsStore.open(PREFS_FILE_NAME, context)
+        prefs.getString(KEY_PROOF_OF_WORK_NONCE, null)?.let { stored ->
+            val nonce = Base64.decode(stored, Base64.NO_WRAP)
+            if (ProofOfWork.isValid(deviceIdHash, nonce)) {
+                return nonce
+            }
+        }
+        val nonce = ProofOfWork.solve(deviceIdHash)
+        prefs.edit()
+            .putString(KEY_PROOF_OF_WORK_NONCE, Base64.encodeToString(nonce, Base64.NO_WRAP))
+            .apply()
+        return nonce
+    }
 
     private fun privateKey(context: Context): Ed25519PrivateKeyParameters {
         val prefs = EncryptedPrefsStore.open(PREFS_FILE_NAME, context)
