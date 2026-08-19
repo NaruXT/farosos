@@ -48,18 +48,33 @@ class BleScanner(
     private val retryCooldownMillis: Long = 5_000,
     private val connectionTimeoutMillis: Long = 5_000
 ) {
-    var onManufacturerData: ((ByteArray) -> Unit)? = null
-    var onGattPacketData: ((ByteArray) -> Unit)? = null
+    /**
+     * Ambos traen el `BluetoothDevice` junto al payload — no solo para
+     * decodificar el `BeaconPacket`, sino porque es la única forma de saber
+     * a qué dispositivo real corresponde un `device_id_hash` dado. Esa
+     * asociación es lo que necesita el chat directo (#61/#63) para resolver
+     * a quién conectarse: `onChatHostDiscovered` (abajo) solo cubre el caso
+     * Android↔Android (Manufacturer Data con el Service UUID del chat, algo
+     * que iOS no puede anunciar — decisión 13 de `spec/packet-format.md`),
+     * así que una víctima iOS nunca dispara ese callback. Estas dos rutas,
+     * en cambio, ya cubren a cualquier peer (Android por Manufacturer Data
+     * directa, iOS por GATT) como efecto secundario del escaneo normal de
+     * la malla — es la fuente real que resuelve el caso iOS.
+     */
+    var onManufacturerData: ((ByteArray, BluetoothDevice) -> Unit)? = null
+    var onGattPacketData: ((ByteArray, BluetoothDevice) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
 
     /**
-     * Un peer cercano anuncia el servicio de chat directo (#61/#63) — su
-     * anuncio lleva el propio `device_id_hash` como Manufacturer Data junto
-     * al Service UUID del chat (`ChatGattServer.start`), para que quien
-     * escanea pueda resolver a qué caso conocido corresponde ese
-     * `BluetoothDevice` antes de conectarse. No dispara una conexión GATT
-     * por sí solo — a diferencia del beacon de iOS, el chat solo se conecta
-     * cuando el usuario elige "Abrir chat" sobre un caso específico.
+     * Atajo específico para Android↔Android: un peer cercano anuncia el
+     * servicio de chat directo (#61/#63) con el propio `device_id_hash`
+     * como Manufacturer Data junto al Service UUID del chat
+     * (`ChatGattServer.start`). No cubre víctimas iOS (no pueden anunciar
+     * Manufacturer Data) — para eso, `onManufacturerData`/`onGattPacketData`
+     * de arriba son la fuente que sí funciona en ambas plataformas. No
+     * dispara una conexión GATT por sí solo — a diferencia del beacon de
+     * iOS, el chat solo se conecta cuando el usuario elige "Abrir chat"
+     * sobre un caso específico.
      */
     var onChatHostDiscovered: ((deviceIdHash: ByteArray, device: BluetoothDevice) -> Unit)? = null
 
@@ -88,7 +103,7 @@ class BleScanner(
                 return
             }
             if (manufacturerData != null) {
-                onManufacturerData?.invoke(manufacturerData)
+                onManufacturerData?.invoke(manufacturerData, result.device)
                 return
             }
             val advertisesBeaconService = BeaconGattService.SERVICE_UUID in serviceUuids
@@ -126,7 +141,7 @@ class BleScanner(
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION") // minSdk 26 no tiene la variante de 4 parámetros, agregada en API 33
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                characteristic.value?.let { onGattPacketData?.invoke(it) }
+                characteristic.value?.let { onGattPacketData?.invoke(it, gatt.device) }
             }
             finishConnection(gatt)
         }

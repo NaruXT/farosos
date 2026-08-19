@@ -135,7 +135,12 @@ class EmergencyViewModel @JvmOverloads constructor(
     private val chatGattServer = ChatGattServer(application, chatHostSession, deviceIdHash)
     private val chatGattClient = ChatGattClient(application)
 
-    /** `device_id_hash` (hex) -> último `BluetoothDevice` visto anunciando ese chat — ver `BleScanner.onChatHostDiscovered`. */
+    /**
+     * `device_id_hash` (hex) -> último `BluetoothDevice` real visto para ese
+     * hash. Alimentado desde dos fuentes: `BleScanner.onChatHostDiscovered`
+     * (atajo Android↔Android) y `handleReceivedPacketData` (cualquier peer,
+     * incluida una víctima iOS — ver el comentario de esa función).
+     */
     private val knownChatHosts = mutableMapOf<String, BluetoothDevice>()
 
     init {
@@ -298,10 +303,8 @@ class EmergencyViewModel @JvmOverloads constructor(
         }
         chatGattServer.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error)) }
 
-        // `onMain` solo reenvía callbacks de un parámetro (ver su firma) —
-        // este trae dos, así que se postea a mano al hilo principal.
-        scanner.onChatHostDiscovered = { hostDeviceIdHash, device ->
-            handler.post { knownChatHosts[hostDeviceIdHash.shortHex()] = device }
+        scanner.onChatHostDiscovered = onMain2 { hostDeviceIdHash, device ->
+            knownChatHosts[hostDeviceIdHash.shortHex()] = device
         }
 
         // `onConnected`/`onDisconnected` no traen parámetro — `onMain` exige
@@ -404,9 +407,11 @@ class EmergencyViewModel @JvmOverloads constructor(
         // anunciarla) y GATT (peers iOS, ticket #11 — ver `BleScanner`)
         // traen los mismos 26 bytes sin envoltorio adicional en ambos
         // casos, así que ambas rutas convergen en el mismo pipeline de
-        // dedup + log + relay.
-        scanner.onManufacturerData = onMain { data -> handleReceivedPacketData(data) }
-        scanner.onGattPacketData = onMain { data -> handleReceivedPacketData(data) }
+        // dedup + log + relay. `onMain2` (no `onMain`) porque ambos traen
+        // el `BluetoothDevice` real junto al payload, necesario para
+        // `knownChatHosts` (#61/#63).
+        scanner.onManufacturerData = onMain2 { data, device -> handleReceivedPacketData(data, device) }
+        scanner.onGattPacketData = onMain2 { data, device -> handleReceivedPacketData(data, device) }
         // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
         // looper) que la Máquina A, así que este callback ya llega en el
         // hilo principal — no hace falta pasar por `onMain`.
@@ -422,6 +427,10 @@ class EmergencyViewModel @JvmOverloads constructor(
      */
     private fun <Value> onMain(work: (Value) -> Unit): (Value) -> Unit =
         { value -> handler.post { work(value) } }
+
+    /** Misma idea que [onMain], para los callbacks de dos parámetros (#61/#63). */
+    private fun <A, B> onMain2(work: (A, B) -> Unit): (A, B) -> Unit =
+        { a, b -> handler.post { work(a, b) } }
 
     /**
      * Reconstruye el `BeaconPacket` local a partir del estado actual de la
@@ -456,9 +465,18 @@ class EmergencyViewModel @JvmOverloads constructor(
      * Data directa y GATT) — `BeaconPacketCodec.decode` ya filtra por
      * Magic/Versión — lo que no coincide simplemente no decodifica y se
      * ignora aquí, sin entrada de log.
+     *
+     * También alimenta `knownChatHosts` (#61/#63) con el `BluetoothDevice`
+     * real detrás de cada `device_id_hash` visto — antes del chequeo de
+     * dedup a propósito, porque esta asociación vale incluso para un
+     * paquete duplicado (dedup es sobre no reprocesar contenido ya visto,
+     * no sobre si ya conocíamos al dispositivo). Es la fuente que resuelve
+     * a víctimas iOS para el chat, a diferencia de `onChatHostDiscovered`
+     * (Android↔Android únicamente, ver `BleScanner`).
      */
-    private fun handleReceivedPacketData(data: ByteArray) {
+    private fun handleReceivedPacketData(data: ByteArray, device: BluetoothDevice) {
         val packet = BeaconPacketCodec.decode(data) ?: return
+        knownChatHosts[packet.deviceIdHash.shortHex()] = device
         val key = DedupCache.Key(packet.deviceIdHash, packet.nonce)
         if (!dedupCache.insertIfAbsent(key)) {
             appendLogEntry(LogEntry.Kind.DuplicateDiscarded(packet.deviceIdHash, packet.nonce))
