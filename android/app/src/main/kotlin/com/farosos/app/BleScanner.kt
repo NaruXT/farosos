@@ -17,6 +17,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.farosos.beaconradio.BEACON_COMPANY_ID
 import com.farosos.beaconradio.BeaconGattService
+import com.farosos.beaconradio.DirectChatGattService
 
 /**
  * Envoltorio de `BluetoothLeScanner` para escanear advertisements BLE
@@ -51,6 +52,17 @@ class BleScanner(
     var onGattPacketData: ((ByteArray) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
 
+    /**
+     * Un peer cercano anuncia el servicio de chat directo (#61/#63) — su
+     * anuncio lleva el propio `device_id_hash` como Manufacturer Data junto
+     * al Service UUID del chat (`ChatGattServer.start`), para que quien
+     * escanea pueda resolver a qué caso conocido corresponde ese
+     * `BluetoothDevice` antes de conectarse. No dispara una conexión GATT
+     * por sí solo — a diferencia del beacon de iOS, el chat solo se conecta
+     * cuando el usuario elige "Abrir chat" sobre un caso específico.
+     */
+    var onChatHostDiscovered: ((deviceIdHash: ByteArray, device: BluetoothDevice) -> Unit)? = null
+
     private val handler = Handler(Looper.getMainLooper())
 
     /** Dirección MAC -> conexión GATT en curso, para poder cerrarla al terminar o al hacer timeout. */
@@ -65,13 +77,21 @@ class BleScanner(
 
     private val callback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid }.orEmpty()
             val manufacturerData = result.scanRecord?.getManufacturerSpecificData(BEACON_COMPANY_ID)
+
+            if (DirectChatGattService.SERVICE_UUID in serviceUuids) {
+                // El anuncio del chat reusa el mismo Company ID para llevar
+                // el device_id_hash (6 bytes) — no es un beacon, se
+                // distingue por traer el Service UUID del chat presente.
+                if (manufacturerData != null) onChatHostDiscovered?.invoke(manufacturerData, result.device)
+                return
+            }
             if (manufacturerData != null) {
                 onManufacturerData?.invoke(manufacturerData)
                 return
             }
-            val advertisesBeaconService = result.scanRecord?.serviceUuids
-                ?.any { it.uuid == BeaconGattService.SERVICE_UUID } == true
+            val advertisesBeaconService = BeaconGattService.SERVICE_UUID in serviceUuids
             if (advertisesBeaconService) connectForGattRead(result.device)
         }
 

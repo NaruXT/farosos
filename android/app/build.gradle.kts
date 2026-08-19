@@ -42,6 +42,7 @@ dependencies {
     implementation(project(":beaconradio"))
     implementation(project(":participantregistration"))
     implementation(project(":caseresolution"))
+    implementation(project(":directchat"))
     implementation(project(":deviceidentity"))
     implementation("androidx.security:security-crypto:1.1.0")
     // Ed25519 no está disponible de forma confiable vía java.security en

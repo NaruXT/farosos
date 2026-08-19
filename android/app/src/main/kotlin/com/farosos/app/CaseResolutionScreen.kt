@@ -32,6 +32,7 @@ fun CaseResolutionScreen(
     ownState: PersonState,
     onMarkAttending: (MeshParticipantState) -> Unit,
     onMarkResolved: (MeshParticipantState) -> Unit,
+    onOpenChat: (MeshParticipantState) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val canActOnOtherCases = ownState != PersonState.AYUDA_SOLICITADA && ownState != PersonState.SILENCIO_TIMEOUT
@@ -63,6 +64,7 @@ fun CaseResolutionScreen(
                             ) {
                                 Button(onClick = { onMarkAttending(case) }) { Text("Voy a socorrer") }
                                 Button(onClick = { onMarkResolved(case) }) { Text("Marcar como resuelto") }
+                                Button(onClick = { onOpenChat(case) }) { Text("Abrir chat") }
                             }
                         }
                     }

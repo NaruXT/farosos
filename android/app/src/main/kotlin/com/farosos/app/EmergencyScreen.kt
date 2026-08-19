@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.farosos.beaconradio.MeshParticipantState
 import com.farosos.personstate.PersonState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +33,8 @@ import com.farosos.personstate.PersonState
 fun EmergencyScreen(viewModel: EmergencyViewModel) {
     var showingLog by remember { mutableStateOf(false) }
     var showingCases by remember { mutableStateOf(false) }
+    var showingOwnChat by remember { mutableStateOf(false) }
+    var rescuerChatCase by remember { mutableStateOf<MeshParticipantState?>(null) }
 
     Scaffold(
         topBar = {
@@ -39,6 +42,12 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
                 title = { Text("Farosos") },
                 actions = {
                     TextButton(onClick = { showingCases = true }) { Text("Casos") }
+                    // Solo tiene sentido abrir el propio chat mientras el
+                    // servicio GATT está activo (#61 — mismo predicado que
+                    // gatea `ChatGattServer.start`/`stop`).
+                    if (viewModel.state.isRequestingHelp) {
+                        TextButton(onClick = { showingOwnChat = true }) { Text("Mi chat") }
+                    }
                     TextButton(onClick = { showingLog = true }) { Text("Log") }
                 }
             )
@@ -89,6 +98,43 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
                     ownState = viewModel.state,
                     onMarkAttending = viewModel::markCaseAttending,
                     onMarkResolved = viewModel::markCaseResolved,
+                    onOpenChat = { case ->
+                        rescuerChatCase = case
+                        viewModel.openChatWith(case)
+                    },
+                    modifier = Modifier.padding(padding)
+                )
+            }
+        }
+    }
+
+    if (showingOwnChat) {
+        Dialog(onDismissRequest = { showingOwnChat = false }) {
+            Scaffold(topBar = { TopAppBar(title = { Text("Mi chat") }) }) { padding ->
+                ChatScreen(
+                    messages = viewModel.ownChatMessages,
+                    isOwnSide = { it.fromVictim },
+                    onSend = viewModel::sendOwnChatMessage,
+                    modifier = Modifier.padding(padding)
+                )
+            }
+        }
+    }
+
+    val openRescuerCase = rescuerChatCase
+    if (openRescuerCase != null) {
+        Dialog(
+            onDismissRequest = {
+                viewModel.closeChat()
+                rescuerChatCase = null
+            }
+        ) {
+            Scaffold(topBar = { TopAppBar(title = { Text("Chat con ${openRescuerCase.deviceIdHash.shortHex()}") }) }) { padding ->
+                ChatScreen(
+                    messages = viewModel.rescuerChatMessages,
+                    isOwnSide = { !it.fromVictim },
+                    onSend = viewModel::sendRescuerChatMessage,
+                    connectionStatus = if (viewModel.isRescuerChatConnected) null else "Conectando...",
                     modifier = Modifier.padding(padding)
                 )
             }

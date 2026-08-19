@@ -24,4 +24,14 @@ enum class PersonState {
             AYUDA_SOLICITADA -> BeaconPacket.Status.AYUDA
             SILENCIO_TIMEOUT -> BeaconPacket.Status.SILENCIO_TIMEOUT
         }
+
+    /**
+     * Quien está pidiendo ayuda no está en posición de atender/resolver
+     * casos ajenos (#55) ni de exponer el servicio de chat directo como
+     * víctima activa (#61 — el chat se activa/desactiva junto con este
+     * mismo predicado). Única fuente de la lista de estados "pidiendo
+     * ayuda", para no repetir la comparación en cada call site.
+     */
+    val isRequestingHelp: Boolean
+        get() = this == AYUDA_SOLICITADA || this == SILENCIO_TIMEOUT
 }

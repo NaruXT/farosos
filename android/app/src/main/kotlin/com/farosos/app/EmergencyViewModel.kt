@@ -1,6 +1,7 @@
 package com.farosos.app
 
 import android.app.Application
+import android.bluetooth.BluetoothDevice
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -24,6 +25,8 @@ import com.farosos.caseresolution.ResolutionMark
 import com.farosos.codec.BeaconPacket
 import com.farosos.codec.BeaconPacketCodec
 import com.farosos.deviceidentity.DeviceIdentityHash
+import com.farosos.directchat.ChatHostSession
+import com.farosos.directchat.ChatMessage
 import com.farosos.networkrole.NetworkRole
 import com.farosos.networkrole.NetworkRoleMachine
 import com.farosos.participantregistration.ParticipantUploadCoordinator
@@ -74,6 +77,14 @@ class EmergencyViewModel @JvmOverloads constructor(
      */
     val knownCases = mutableStateListOf<MeshParticipantState>()
 
+    /** Historial del propio canal de chat (#61) cuando este teléfono es la víctima que lo hostea. */
+    val ownChatMessages = mutableStateListOf<ChatMessage>()
+
+    /** Historial del chat con el caso ajeno actualmente abierto (rol rescatista, #61) — vacío si no hay ninguno abierto. */
+    val rescuerChatMessages = mutableStateListOf<ChatMessage>()
+    var isRescuerChatConnected by mutableStateOf(false)
+        private set
+
     private val handler = Handler(Looper.getMainLooper())
     private val scheduler = RealScheduler()
     private val machine = PersonStateMachine(scheduler, shakeDuration, confirmationWindow)
@@ -119,6 +130,14 @@ class EmergencyViewModel @JvmOverloads constructor(
     private var radioStarted = false
     private var isForeground = false
 
+    // --- Chat directo (#61/#63) — rol víctima (host) y rol rescatista (cliente) ---
+    private val chatHostSession = ChatHostSession(initialHistory = ChatHistoryStore.history(application))
+    private val chatGattServer = ChatGattServer(application, chatHostSession, deviceIdHash)
+    private val chatGattClient = ChatGattClient(application)
+
+    /** `device_id_hash` (hex) -> último `BluetoothDevice` visto anunciando ese chat — ver `BleScanner.onChatHostDiscovered`. */
+    private val knownChatHosts = mutableMapOf<String, BluetoothDevice>()
+
     init {
         // Mitigación Sybil de Caso A (#51): costo único al instalar, no debe
         // competir con el hilo principal ni con batería en una emergencia —
@@ -128,6 +147,7 @@ class EmergencyViewModel @JvmOverloads constructor(
         participantUploadCoordinator.onUploadSucceeded = { ParticipantStore.markUploaded(application) }
         caseResolutionUploadCoordinator.onResolutionUploaded = { mark -> CaseResolutionStore.removePendingResolution(mark, application) }
         caseResolutionUploadCoordinator.onAttendingUploaded = { mark -> CaseResolutionStore.removePendingAttending(mark, application) }
+        wireDirectChat(application)
         appendLogEntry(LogEntry.Kind.Info("device_id_hash propio: ${deviceIdHash.shortHex()}"))
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
@@ -262,6 +282,72 @@ class EmergencyViewModel @JvmOverloads constructor(
             PersonState.ESPERANDO_CONFIRMACION -> startCountdown(confirmationWindow)
             else -> stopCountdown()
         }
+
+        // El servicio GATT del chat directo solo está activo mientras la
+        // propia persona podría necesitar que alguien se conecte (#61,
+        // decisión de batería) — se apaga en cualquier otro estado.
+        if (newState.isRequestingHelp) chatGattServer.start() else chatGattServer.stop()
+    }
+
+    /** Conecta el historial del propio canal (rol víctima) con la persistencia local y expone los cambios a la UI. */
+    private fun wireDirectChat(application: Application) {
+        chatHostSession.onHistoryChanged = onMain { history ->
+            ownChatMessages.clear()
+            ownChatMessages.addAll(history)
+            ChatHistoryStore.replaceHistory(history, application)
+        }
+        chatGattServer.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error)) }
+
+        // `onMain` solo reenvía callbacks de un parámetro (ver su firma) —
+        // este trae dos, así que se postea a mano al hilo principal.
+        scanner.onChatHostDiscovered = { hostDeviceIdHash, device ->
+            handler.post { knownChatHosts[hostDeviceIdHash.shortHex()] = device }
+        }
+
+        // `onConnected`/`onDisconnected` no traen parámetro — `onMain` exige
+        // uno, así que se postea a mano al hilo principal, igual que arriba.
+        chatGattClient.onConnected = { handler.post { isRescuerChatConnected = true } }
+        chatGattClient.onDisconnected = {
+            handler.post {
+                isRescuerChatConnected = false
+                rescuerChatMessages.clear()
+            }
+        }
+        chatGattClient.onMessagesReceived = onMain { messages -> rescuerChatMessages.addAll(messages) }
+        chatGattClient.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error)) }
+    }
+
+    /**
+     * Rol rescatista: abre el chat con un caso conocido (#61) — la UI
+     * (`CaseResolutionScreen`) ya garantiza las mismas restricciones que
+     * "atendiendo"/"resuelto" (no el propio caso, no mientras se pide
+     * ayuda). Si todavía no se vio ningún anuncio del chat de ese caso
+     * (`knownChatHosts` vacío para ese hash), no hay nada a lo que
+     * conectarse todavía — la UI debe indicar que siga esperando.
+     */
+    fun openChatWith(case: MeshParticipantState) {
+        val device = knownChatHosts[case.deviceIdHash.shortHex()] ?: run {
+            appendLogEntry(LogEntry.Kind.Info("Todavía no se detectó el chat de ese caso — esperando a estar más cerca."))
+            return
+        }
+        rescuerChatMessages.clear()
+        chatGattClient.connect(device)
+    }
+
+    fun closeChat() {
+        chatGattClient.disconnect()
+        isRescuerChatConnected = false
+        rescuerChatMessages.clear()
+    }
+
+    /** Manda un mensaje como rescatista sobre el chat actualmente abierto. */
+    fun sendRescuerChatMessage(text: String) {
+        chatGattClient.sendMessage(text)
+    }
+
+    /** Manda un mensaje propio (rol víctima) sobre el chat que este teléfono está hosteando. */
+    fun sendOwnChatMessage(text: String) {
+        chatGattServer.sendOwnMessage(text)
     }
 
     private fun appendLogEntry(kind: LogEntry.Kind) {
