@@ -12,11 +12,16 @@ import com.farosos.beaconradio.DedupCache
 import com.farosos.beaconradio.GatewayUploader
 import com.farosos.beaconradio.IdentityConfirmationUploader
 import com.farosos.beaconradio.LocalBeaconFactory
+import com.farosos.beaconradio.MeshParticipantState
 import com.farosos.beaconradio.MeshStateRegistry
 import com.farosos.beaconradio.RandomNonceGenerator
 import com.farosos.beaconradio.RelayPolicy
 import com.farosos.beaconradio.RelayQueue
 import com.farosos.beaconradio.VerifiedIdentityRegistry
+import com.farosos.caseresolution.AttendingMark
+import com.farosos.caseresolution.CaseResolutionUploadCoordinator
+import com.farosos.caseresolution.ResolutionMark
+import com.farosos.codec.BeaconPacket
 import com.farosos.codec.BeaconPacketCodec
 import com.farosos.deviceidentity.DeviceIdentityHash
 import com.farosos.networkrole.NetworkRole
@@ -59,6 +64,16 @@ class EmergencyViewModel @JvmOverloads constructor(
     var countdownSecondsRemaining by mutableStateOf<Int?>(null)
         private set
 
+    /**
+     * Casos `AYUDA_SOLICITADA`/`SILENCIO_TIMEOUT` de otros participantes
+     * que este teléfono ya conoce por la malla (#55) — excluye siempre el
+     * propio caso. Recalculada tras cada `meshStateRegistry.update(...)`
+     * en vez de colgarse de `meshStateRegistry.onStateUpdated` (ese slot ya
+     * lo usa `gatewayUploader` para subir al backend; reasignarlo acá lo
+     * pisaría según el rol de red actual).
+     */
+    val knownCases = mutableStateListOf<MeshParticipantState>()
+
     private val handler = Handler(Looper.getMainLooper())
     private val scheduler = RealScheduler()
     private val machine = PersonStateMachine(scheduler, shakeDuration, confirmationWindow)
@@ -83,6 +98,12 @@ class EmergencyViewModel @JvmOverloads constructor(
     )
     private val meshStateRegistry = MeshStateRegistry()
     private val gatewayUploader = GatewayUploader(meshStateRegistry, FirebaseMeshStateUploader())
+    private val caseResolutionUploadCoordinator = CaseResolutionUploadCoordinator(
+        resolverDeviceIdHash = deviceIdHash,
+        uploader = FirebaseCaseResolutionUploader(),
+        pendingResolutions = CaseResolutionStore.pendingResolutions(application),
+        pendingAttending = CaseResolutionStore.pendingAttending(application)
+    )
     // Caso A (#53): `verifiedIdentityRegistry.record(_)` todavía no lo llama
     // nada — ninguna ticket de Fase 4 conectó todavía la verificación local
     // de fragmentos (`SignatureFragmentAssembler`, #45) a la recepción real
@@ -105,6 +126,8 @@ class EmergencyViewModel @JvmOverloads constructor(
         // la encuentra ya calculada y no repite el trabajo.
         Thread { DeviceIdentity.proofOfWorkSeal(application, deviceIdHash) }.start()
         participantUploadCoordinator.onUploadSucceeded = { ParticipantStore.markUploaded(application) }
+        caseResolutionUploadCoordinator.onResolutionUploaded = { mark -> CaseResolutionStore.removePendingResolution(mark, application) }
+        caseResolutionUploadCoordinator.onAttendingUploaded = { mark -> CaseResolutionStore.removePendingAttending(mark, application) }
         appendLogEntry(LogEntry.Kind.Info("device_id_hash propio: ${deviceIdHash.shortHex()}"))
         appendLogEntry(LogEntry.Kind.Transition(machine.state, machine.sequence))
         machine.onTransition = { newState -> handleTransition(newState) }
@@ -145,6 +168,7 @@ class EmergencyViewModel @JvmOverloads constructor(
             if (hasConnectivity) {
                 networkMachine.connectivityDetected()
                 participantUploadCoordinator.connectivityDetected()
+                caseResolutionUploadCoordinator.connectivityDetected()
             }
         }
         // `relayQueue` usa el mismo `Scheduler` (respaldado por el main
@@ -244,6 +268,47 @@ class EmergencyViewModel @JvmOverloads constructor(
         logEntries.add(LogEntry(System.currentTimeMillis(), kind))
     }
 
+    /** Recalcula `knownCases` desde `meshStateRegistry` — ver el comentario de `knownCases`. */
+    private fun refreshKnownCases() {
+        knownCases.clear()
+        knownCases.addAll(
+            meshStateRegistry.allStates().filter { known ->
+                !known.deviceIdHash.contentEquals(deviceIdHash) &&
+                    (known.status == BeaconPacket.Status.AYUDA || known.status == BeaconPacket.Status.SILENCIO_TIMEOUT)
+            }
+        )
+    }
+
+    /**
+     * Marca "resuelto" (#55) sobre el caso de otro participante — la UI
+     * (`CaseResolutionScreen`) es responsable de no ofrecer esta acción
+     * sobre el propio caso ni mientras el propio estado esté pidiendo
+     * ayuda. Ubicación propia en 0: sin captura de GPS todavía, misma
+     * limitación conocida que `LocalBeaconFactory` para el beacon propio.
+     */
+    fun markCaseResolved(case: MeshParticipantState) {
+        val mark = ResolutionMark(
+            victimDeviceIdHash = case.deviceIdHash,
+            victimSequence = case.sequence,
+            resolverLatitudeE7 = 0,
+            resolverLongitudeE7 = 0,
+            markedAtEpochSeconds = System.currentTimeMillis() / 1000
+        )
+        CaseResolutionStore.addPendingResolution(mark, getApplication())
+        caseResolutionUploadCoordinator.markResolved(mark)
+    }
+
+    /** Marca "atendiendo" (#55, "voy a socorrer") — mismas restricciones de UI que [markCaseResolved]. */
+    fun markCaseAttending(case: MeshParticipantState) {
+        val mark = AttendingMark(
+            victimDeviceIdHash = case.deviceIdHash,
+            victimSequence = case.sequence,
+            markedAtEpochSeconds = System.currentTimeMillis() / 1000
+        )
+        CaseResolutionStore.addPendingAttending(mark, getApplication())
+        caseResolutionUploadCoordinator.markAttending(mark)
+    }
+
     // --- BLE (advertising + scanning + dedup, ticket #7) ---
 
     private fun wireRadio() {
@@ -297,6 +362,7 @@ class EmergencyViewModel @JvmOverloads constructor(
         dedupCache.insertIfAbsent(DedupCache.Key(packet.deviceIdHash, packet.nonce))
         relayQueue.updateOwnBeacon(packet)
         meshStateRegistry.update(packet)
+        refreshKnownCases()
     }
 
     /**
@@ -314,6 +380,7 @@ class EmergencyViewModel @JvmOverloads constructor(
         }
         appendLogEntry(LogEntry.Kind.BeaconReceived(packet.deviceIdHash, packet.ttl, packet.sequence))
         meshStateRegistry.update(packet)
+        refreshKnownCases()
         val relayed = RelayPolicy.decrementedForRelay(packet)
         if (relayed != null) {
             relayQueue.enqueueForeignBeacon(relayed)

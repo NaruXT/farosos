@@ -31,12 +31,16 @@ import com.farosos.personstate.PersonState
 @Composable
 fun EmergencyScreen(viewModel: EmergencyViewModel) {
     var showingLog by remember { mutableStateOf(false) }
+    var showingCases by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Farosos") },
-                actions = { TextButton(onClick = { showingLog = true }) { Text("Log") } }
+                actions = {
+                    TextButton(onClick = { showingCases = true }) { Text("Casos") }
+                    TextButton(onClick = { showingLog = true }) { Text("Log") }
+                }
             )
         }
     ) { padding ->
@@ -71,6 +75,20 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
                 LogScreen(
                     entries = viewModel.logEntries,
                     networkRole = viewModel.networkRole,
+                    modifier = Modifier.padding(padding)
+                )
+            }
+        }
+    }
+
+    if (showingCases) {
+        Dialog(onDismissRequest = { showingCases = false }) {
+            Scaffold(topBar = { TopAppBar(title = { Text("Casos conocidos") }) }) { padding ->
+                CaseResolutionScreen(
+                    knownCases = viewModel.knownCases,
+                    ownState = viewModel.state,
+                    onMarkAttending = viewModel::markCaseAttending,
+                    onMarkResolved = viewModel::markCaseResolved,
                     modifier = Modifier.padding(padding)
                 )
             }
