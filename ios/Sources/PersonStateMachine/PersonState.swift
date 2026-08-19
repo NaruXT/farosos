@@ -25,4 +25,16 @@ public enum PersonState: Equatable {
             return .silencioTimeout
         }
     }
+
+    /// Quien está pidiendo ayuda no está en posición de atender casos ajenos
+    /// (#55/#57) — única fuente de esta correspondencia, para que la UI de
+    /// casos conocidos no repita la comparación de casos.
+    public var isRequestingHelp: Bool {
+        switch self {
+        case .ayudaSolicitada, .silencioTimeout:
+            return true
+        case .dormido, .activoSinConfirmar, .esperandoConfirmacion, .confirmadoOk:
+            return false
+        }
+    }
 }

@@ -13,7 +13,8 @@ let package = Package(
         .library(name: "NetworkRoleMachine", targets: ["NetworkRoleMachine"]),
         .library(name: "BeaconRadio", targets: ["BeaconRadio"]),
         .library(name: "ParticipantRegistration", targets: ["ParticipantRegistration"]),
-        .library(name: "DeviceIdentity", targets: ["DeviceIdentity"])
+        .library(name: "DeviceIdentity", targets: ["DeviceIdentity"]),
+        .library(name: "CaseResolution", targets: ["CaseResolution"])
     ],
     targets: [
         .target(name: "PacketCodec"),
@@ -28,6 +29,8 @@ let package = Package(
         .target(name: "BeaconRadio", dependencies: ["PacketCodec", "PersonStateMachine"]),
         .testTarget(name: "BeaconRadioTests", dependencies: ["BeaconRadio", "TestSupport"]),
         .target(name: "ParticipantRegistration"),
-        .testTarget(name: "ParticipantRegistrationTests", dependencies: ["ParticipantRegistration"])
+        .testTarget(name: "ParticipantRegistrationTests", dependencies: ["ParticipantRegistration"]),
+        .target(name: "CaseResolution"),
+        .testTarget(name: "CaseResolutionTests", dependencies: ["CaseResolution"])
     ]
 )

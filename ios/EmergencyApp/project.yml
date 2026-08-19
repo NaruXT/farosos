@@ -28,6 +28,8 @@ targets:
         product: ParticipantRegistration
       - package: Farosos
         product: DeviceIdentity
+      - package: Farosos
+        product: CaseResolution
       - package: FirebaseiOS
         product: FirebaseCore
       - package: FirebaseiOS

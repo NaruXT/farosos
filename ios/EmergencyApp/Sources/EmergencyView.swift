@@ -4,6 +4,7 @@ import SwiftUI
 struct EmergencyView: View {
     @StateObject private var viewModel = EmergencyViewModel()
     @State private var showingLog = false
+    @State private var showingKnownCases = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,9 @@ struct EmergencyView: View {
             .navigationTitle("Farosos")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Casos") { showingKnownCases = true }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Log") { showingLog = true }
                 }
             }
@@ -38,6 +42,12 @@ struct EmergencyView: View {
                 LogView(
                     entries: viewModel.logEntries,
                     networkRole: viewModel.networkRole
+                )
+            }
+            .sheet(isPresented: $showingKnownCases) {
+                KnownCasesView(
+                    viewModel: viewModel.makeKnownCasesViewModel(),
+                    ownState: viewModel.state
                 )
             }
         }

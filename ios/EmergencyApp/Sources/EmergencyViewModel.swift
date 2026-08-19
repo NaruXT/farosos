@@ -1,4 +1,5 @@
 import BeaconRadio
+import CaseResolution
 import Combine
 import DeviceIdentity
 import Foundation
@@ -64,6 +65,11 @@ final class EmergencyViewModel: ObservableObject {
     /// instanciar el assembler y conectar `onIdentityVerified` acá.
     private let verifiedIdentityRegistry = VerifiedIdentityRegistry()
     private let identityConfirmationUploader: IdentityConfirmationUploader
+    /// Marcas "resuelto"/"atendiendo" (#55/#57) — desacoplado de
+    /// `GATEWAY_ACTIVO` a propósito (a diferencia de `gatewayUploader`/
+    /// `identityConfirmationUploader`): el resolutor sube directo cuando su
+    /// propio teléfono tiene señal, sin pasar por la malla BLE.
+    private let resolutionUploadCoordinator: ResolutionUploadCoordinator
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -97,6 +103,13 @@ final class EmergencyViewModel: ObservableObject {
             registry: verifiedIdentityRegistry,
             uploader: FirebaseIdentityConfirmationUploader()
         )
+        resolutionUploadCoordinator = ResolutionUploadCoordinator(
+            uploader: FirebaseResolutionUploader(),
+            pendingResolved: KeychainResolutionStore.pendingResolved(),
+            pendingAttending: KeychainResolutionStore.pendingAttending()
+        )
+        resolutionUploadCoordinator.onResolvedUploaded = { KeychainResolutionStore.removePendingResolved($0) }
+        resolutionUploadCoordinator.onAttendingUploaded = { KeychainResolutionStore.removePendingAttending($0) }
         let scheduler = RealScheduler()
         machine = PersonStateMachine(
             scheduler: scheduler,
@@ -127,6 +140,18 @@ final class EmergencyViewModel: ObservableObject {
     func confirmOk() { machine.confirmOk() }
     func requestHelp() { machine.requestHelp() }
 
+    /// Construida bajo demanda (no guardada como propiedad) porque
+    /// `KnownCasesView` la crea cada vez que se abre la pantalla —
+    /// `refresh()` toma el snapshot real de `meshStateRegistry` en ese
+    /// momento, no hace falta mantener una instancia viva entre aperturas.
+    func makeKnownCasesViewModel() -> KnownCasesViewModel {
+        KnownCasesViewModel(
+            ownDeviceIdHash: deviceIdHash,
+            meshStateRegistry: meshStateRegistry,
+            coordinator: resolutionUploadCoordinator
+        )
+    }
+
     // MARK: - Máquina B (rol de red, tickets #13/#17/#20/#24)
     //
     // Batería y conectividad llegan de `BatteryMonitor`/`ConnectivityMonitor`
@@ -153,6 +178,7 @@ final class EmergencyViewModel: ObservableObject {
             guard hasConnectivity else { return }
             viewModel.networkMachine.connectivityDetected()
             viewModel.participantUploadCoordinator.connectivityDetected()
+            viewModel.resolutionUploadCoordinator.connectivityDetected()
         }
         // `RelayQueue` ya despacha en el hilo principal (ver `wireRadio`),
         // así que esto no necesita pasar por `onMain`.
