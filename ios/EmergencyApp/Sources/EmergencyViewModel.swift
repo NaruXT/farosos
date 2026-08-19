@@ -70,7 +70,17 @@ final class EmergencyViewModel: ObservableObject {
     init(shakeDuration: TimeInterval = 3, confirmationWindow: TimeInterval = 20) {
         self.shakeDuration = shakeDuration
         self.confirmationWindow = confirmationWindow
-        deviceIdHash = KeychainDeviceIdentity.deviceIdHash()
+        let ownDeviceIdHash = KeychainDeviceIdentity.deviceIdHash()
+        deviceIdHash = ownDeviceIdHash
+        // Mitigación Sybil de Caso A (#50): costo único al instalar, no debe
+        // competir con el hilo principal ni con batería en una emergencia —
+        // se dispara en background y se persiste; una corrida posterior la
+        // encuentra ya calculada y no repite el trabajo. Captura el hash en
+        // una constante local (no `self.deviceIdHash`) porque `self` todavía
+        // no termina de inicializarse en este punto del `init`.
+        Task.detached(priority: .utility) {
+            _ = KeychainDeviceIdentity.proofOfWorkSeal(deviceIdHash: ownDeviceIdHash)
+        }
         participantUploadCoordinator = ParticipantUploadCoordinator(
             deviceIdHash: deviceIdHash,
             uploader: FirebaseParticipantUploader(),

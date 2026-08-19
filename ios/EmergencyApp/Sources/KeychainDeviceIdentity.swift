@@ -12,9 +12,29 @@ import Foundation
 /// `RealScheduler`.
 enum KeychainDeviceIdentity {
     private static let account = "ed25519PrivateKey"
+    private static let proofOfWorkAccount = "proofOfWorkNonce"
 
     static func deviceIdHash() -> Data {
         DeviceIdentityHash.fromPublicKey(privateKey().publicKey.rawRepresentation)
+    }
+
+    /// Mitigación Sybil de Caso A (#50) — calcula el sello de Prueba de
+    /// Trabajo sobre `deviceIdHash` una única vez y lo persiste, igual que
+    /// la identidad Ed25519. Si ya hay un sello guardado y sigue siendo
+    /// válido (mismo `deviceIdHash`, cumple `ProofOfWork.difficultyBits`
+    /// actual) lo reutiliza sin recalcular; si no, lo recalcula — cubre
+    /// tanto la primera vez como un cambio futuro de dificultad o de
+    /// identidad (reinstalación). Recibe `deviceIdHash` en vez de volver a
+    /// derivarlo de Keychain, porque quien llama ya lo tiene.
+    static func proofOfWorkSeal(deviceIdHash: Data) -> Data {
+        if let stored = KeychainStore.read(account: proofOfWorkAccount),
+           let nonce = Data(base64Encoded: stored),
+           ProofOfWork.isValid(deviceIdHash: deviceIdHash, nonce: nonce) {
+            return nonce
+        }
+        let nonce = ProofOfWork.solve(deviceIdHash: deviceIdHash)
+        KeychainStore.write(nonce.base64EncodedString(), account: proofOfWorkAccount)
+        return nonce
     }
 
     private static func privateKey() -> Curve25519.Signing.PrivateKey {
