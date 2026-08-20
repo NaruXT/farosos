@@ -17,7 +17,7 @@ final class ChatViewModel: ObservableObject {
 
     private let connection = ChatCentralConnection()
 
-    init(peripheral: CBPeripheral) {
+    init(peripheral: CBPeripheral, deviceIdHash: Data) {
         connection.onMessagesReceived = { [weak self] newMessages in
             guard let self else { return }
             self.messages.append(contentsOf: newMessages)
@@ -27,7 +27,7 @@ final class ChatViewModel: ObservableObject {
         connection.onError = { [weak self] message in self?.errorMessage = message }
         connection.onDebugStatus = { [weak self] status in self?.debugStatus = status }
         debugStatus = "peripheral=\(peripheral.identifier) state=\(peripheral.state.rawValue)"
-        connection.connect(to: peripheral)
+        connection.connect(to: peripheral, deviceIdHash: deviceIdHash)
     }
 
     /// A diferencia de `ChatHostSession.sendOwnMessage` (que agrega al

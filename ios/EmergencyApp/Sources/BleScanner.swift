@@ -26,6 +26,22 @@ final class BleScanner: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     /// reenvía el peripheral con el que llegó cada paquete.
     var onManufacturerData: ((Data, CBPeripheral) -> Void)?
     var onGattPacketData: ((Data, CBPeripheral) -> Void)?
+    /// Atajo específico para el anuncio propio del chat directo (#61/#63) -
+    /// mismo Company ID que el beacon general, distinguido por traer el
+    /// Service UUID del chat. Hallazgo real de campo (#64, investigación con
+    /// PacketLogger): antes de este chequeo, `onManufacturerData` capturaba
+    /// *cualquier* anuncio con manufacturer data primero, sin mirar el
+    /// Service UUID - así que el `CBPeripheral` que terminaba guardado en
+    /// `chatPeerDirectory` para un peer Android podía ser el del beacon
+    /// general (`BleAdvertiser`, otra sesión de advertising) en vez del que
+    /// realmente aloja el `BluetoothGattServer` del chat
+    /// (`ChatGattServer.startAdvertising`) - Android le asigna una dirección
+    /// BLE aleatoria distinta a cada sesión. `connect()` apuntaba entonces a
+    /// un peripheral que Android nunca escuchaba, sin ningún error visible
+    /// (coincide exactamente con el bug de campo "CBPeripheral atascado en
+    /// .connecting, Android no ve nada"). Mismo chequeo que ya hace Android
+    /// en `BleScanner.onScanResult` del lado Kotlin.
+    var onChatHostDiscovered: ((Data, CBPeripheral) -> Void)?
     var onError: ((String) -> Void)?
 
     /// Si un peer acepta la conexión pero nunca completa el descubrimiento
@@ -72,11 +88,20 @@ final class BleScanner: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
         advertisementData: [String: Any],
         rssi RSSI: NSNumber
     ) {
+        let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
         if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+            if advertisedServices.contains(ChatGattService.serviceUUID) {
+                // El payload acá es el device_id_hash crudo, no un
+                // `BeaconPacket` - `ManufacturerDataFrame.payload(from:)`
+                // solo filtra por Company ID, no decodifica.
+                if let deviceIdHash = ManufacturerDataFrame.payload(from: manufacturerData) {
+                    onChatHostDiscovered?(deviceIdHash, peripheral)
+                }
+                return
+            }
             onManufacturerData?(manufacturerData, peripheral)
             return
         }
-        let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
         guard advertisedServices.contains(BeaconGattService.serviceUUID),
               !connectingPeripherals.contains(peripheral) else { return }
         connectingPeripherals.insert(peripheral)

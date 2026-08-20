@@ -20,10 +20,21 @@ public enum ManufacturerDataFrame {
     /// Filtra por Company ID y delega el resto (incluyendo Magic/Versión) en
     /// `BeaconPacketCodec.decode` — sin reimplementar ese filtro aquí.
     public static func decode(_ data: Data) -> BeaconPacket? {
-        guard data.count == 2 + BeaconPacket.packetSize else { return nil }
+        guard let payload = payload(from: data) else { return nil }
+        return BeaconPacketCodec.decode(payload)
+    }
+
+    /// Filtra por Company ID y devuelve el payload crudo sin decodificar -
+    /// usado también por el anuncio del chat directo (#61/#64), cuyo
+    /// payload es el `device_id_hash` crudo, no un `BeaconPacket`. Mismo
+    /// formato (Company ID de 2 bytes little-endian + payload), extraído acá
+    /// para no repetir este chequeo en cada lugar que lo necesita (hallazgo
+    /// de code review, #64).
+    public static func payload(from data: Data) -> Data? {
+        guard data.count > 2 else { return nil }
         let base = data.startIndex
         let receivedCompanyId = UInt16(data[base]) | (UInt16(data[base + 1]) << 8)
         guard receivedCompanyId == companyId else { return nil }
-        return BeaconPacketCodec.decode(data.subdata(in: (base + 2)..<data.endIndex))
+        return data.subdata(in: (base + 2)..<data.endIndex)
     }
 }

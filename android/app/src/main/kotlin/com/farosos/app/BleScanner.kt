@@ -182,8 +182,21 @@ class BleScanner(
      */
     private var gattConnectsPaused = false
 
+    /**
+     * Hallazgo real de campo (#64, sesión del trace de PacketLogger): pausar
+     * solo bloqueaba conexiones nuevas - si el escáner ya tenía una en curso
+     * hacia el mismo peer justo en el instante en que arrancaba el chat (la
+     * ventana entre que el escáner ve el beacon del peer y que el usuario
+     * toca "necesito ayuda" es de milisegundos, no controlable desde acá),
+     * esa conexión "straggler" seguía su curso completo y se seguía
+     * reportando como si fuera el rescatista entrando al chat (mismo
+     * mecanismo ya documentado en `EmergencyViewModel`). Cerrar también las
+     * conexiones ya activas al pausar cierra esa ventana residual.
+     */
+    @SuppressLint("MissingPermission")
     fun pauseGattConnects() {
         gattConnectsPaused = true
+        activeConnections.values.toList().forEach { finishConnection(it) }
     }
 
     fun resumeGattConnects() {

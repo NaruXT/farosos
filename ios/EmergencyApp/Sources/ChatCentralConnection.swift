@@ -29,9 +29,47 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
     /// `connect(to:)` se llame antes de que el radio esté listo.
     private var pendingPeripheralIdentifier: UUID?
 
+    /// Hallazgo de campo real (#64, investigación con PacketLogger): Android
+    /// no expone ninguna API pública para fijar una dirección BLE estable en
+    /// su advertising del chat (`AdvertisingSetParameters.Builder` no tiene
+    /// `setOwnAddressType` en la API pública) - el sistema le asigna una
+    /// dirección aleatoria resoluble que puede rotar entre que este teléfono
+    /// descubre el caso y que el usuario toca "Abrir chat". `connect()`
+    /// sobre un `CBPeripheral` con esa dirección ya vieja queda atascado
+    /// para siempre: sin bonding (decisión explícita de #61), CoreBluetooth
+    /// no puede resolver una RPA rotada de vuelta a la misma identidad, y
+    /// reintenta internamente contra la dirección vieja sin escalar nunca un
+    /// error a la app (confirmado con un trace HCI real: `LE Extended
+    /// Create Connection` seguido de `LE Create Connection Cancel` cada
+    /// pocos segundos, indefinidamente). Mitigación recomendada por un
+    /// ingeniero de Apple en foro oficial para conexiones poco confiables:
+    /// no reintentar sobre el mismo objeto, re-escanear y conectar sobre una
+    /// instancia recién descubierta. Acá se implementa como un escaneo
+    /// continuo filtrado al servicio del chat mientras dura el intento,
+    /// más un timer que cancela y reconecta con el `CBPeripheral` más
+    /// fresco visto hasta ese momento.
+    private var targetDeviceIdHash: Data?
+    private var latestDiscoveredPeripheral: CBPeripheral?
+    private static let retryInterval: TimeInterval = 3
+
     override init() {
         super.init()
         session.onMessagesReceived = { [weak self] messages in self?.onMessagesReceived?(messages) }
+    }
+
+    /// `deviceIdHash` identifica al peer entre los anuncios que el escaneo
+    /// propio de esta clase recibe mientras dura el intento - ver el
+    /// comentario de arriba.
+    func connect(to peripheral: CBPeripheral, deviceIdHash: Data) {
+        targetDeviceIdHash = deviceIdHash
+        latestDiscoveredPeripheral = peripheral
+        let identifier = peripheral.identifier
+        guard centralManager.state == .poweredOn else {
+            onDebugStatus?("esperando poweredOn (state=\(centralManager.state.rawValue))")
+            pendingPeripheralIdentifier = identifier
+            return
+        }
+        connect(identifier: identifier)
     }
 
     /// Hallazgo de campo real (#64): el `CBPeripheral` que llega acá lo
@@ -43,16 +81,6 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
     /// reusar un identificador descubierto por otro manager es
     /// `retrievePeripherals(withIdentifiers:)`, que devuelve una instancia
     /// ya scoped al manager que la va a usar.
-    func connect(to peripheral: CBPeripheral) {
-        let identifier = peripheral.identifier
-        guard centralManager.state == .poweredOn else {
-            onDebugStatus?("esperando poweredOn (state=\(centralManager.state.rawValue))")
-            pendingPeripheralIdentifier = identifier
-            return
-        }
-        connect(identifier: identifier)
-    }
-
     private func connect(identifier: UUID) {
         guard let ownPeripheral = centralManager.retrievePeripherals(withIdentifiers: [identifier]).first else {
             onDebugStatus?("retrievePeripherals no encontró \(identifier)")
@@ -63,7 +91,41 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
         ownPeripheral.delegate = self
         onDebugStatus?("connect() llamado, managerState=\(centralManager.state.rawValue) peripheral.state=\(ownPeripheral.state.rawValue)")
         centralManager.connect(ownPeripheral)
+        centralManager.scanForPeripherals(withServices: [ChatGattService.serviceUUID], options: nil)
         startPolling()
+        startRetryTimer()
+    }
+
+    private var retryTimer: Timer?
+
+    private func startRetryTimer() {
+        retryTimer?.invalidate()
+        retryTimer = Timer.scheduledTimer(withTimeInterval: Self.retryInterval, repeats: true) { [weak self] _ in
+            self?.retryWithFreshestPeripheral()
+        }
+    }
+
+    private func retryWithFreshestPeripheral() {
+        guard let peripheral = latestDiscoveredPeripheral, peripheral.state != .connected else { return }
+        if let targetPeripheral, targetPeripheral.state == .connecting {
+            centralManager.cancelPeripheralConnection(targetPeripheral)
+        }
+        targetPeripheral = peripheral
+        peripheral.delegate = self
+        onDebugStatus?("retry: reconectando con peripheral más fresco visto")
+        centralManager.connect(peripheral)
+    }
+
+    /// Filtra por `deviceIdHash` (mismo formato que `ManufacturerDataFrame`:
+    /// Company ID de 2 bytes little-endian + payload) para no confundir el
+    /// anuncio del chat de este peer con el de otro caso conocido.
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard let targetDeviceIdHash,
+              let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+              let hash = ManufacturerDataFrame.payload(from: manufacturerData),
+              hash == targetDeviceIdHash
+        else { return }
+        latestDiscoveredPeripheral = peripheral
     }
 
     /// Diagnóstico temporal de campo (#64) - `CBPeripheral.state` es una
@@ -83,8 +145,23 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func disconnect() {
+        stopRetrying()
         guard let targetPeripheral else { return }
         centralManager.cancelPeripheralConnection(targetPeripheral)
+    }
+
+    /// Hallazgo real de code review (#64): sin esto en *todos* los caminos
+    /// terminales (no solo el éxito y `disconnect()` manual), el timer de
+    /// reintento seguía disparando cada 3s aunque ya se hubiera reportado un
+    /// error al usuario - por ejemplo, si la víctima salió de
+    /// `AYUDA_SOLICITADA` mientras el rescatista intentaba conectar
+    /// (`didDiscoverServices` sin el servicio), el reintento reconectaba
+    /// una y otra vez contra un host que ya no tiene el chat, en vez de
+    /// asentarse en el error mostrado.
+    private func stopRetrying() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+        centralManager.stopScan()
     }
 
     /// `nil` mientras el handshake no terminó (`ChatClientSession.encryptOwnMessage`
@@ -106,11 +183,13 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        stopRetrying()
         onDebugStatus?("didConnect, descubriendo servicios")
         peripheral.discoverServices([ChatGattService.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        stopRetrying()
         onDebugStatus?("didFailToConnect error=\(String(describing: error))")
         onError?("No se pudo conectar al chat: \(error?.localizedDescription ?? "desconocido")")
     }
@@ -125,6 +204,7 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         onDebugStatus?("didDiscoverServices error=\(String(describing: error)) services=\(String(describing: peripheral.services))")
         guard let service = peripheral.services?.first(where: { $0.uuid == ChatGattService.serviceUUID }) else {
+            stopRetrying()
             onError?("El caso elegido ya no tiene el chat disponible (dejó de pedir ayuda, o se desconectó).")
             centralManager.cancelPeripheralConnection(peripheral)
             return
@@ -142,6 +222,7 @@ final class ChatCentralConnection: NSObject, CBCentralManagerDelegate, CBPeriphe
               let guestKeyCharacteristic = characteristics.first(where: { $0.uuid == ChatGattService.guestPublicKeyCharacteristicUUID }),
               let messageCharacteristic = characteristics.first(where: { $0.uuid == ChatGattService.messageCharacteristicUUID })
         else {
+            stopRetrying()
             onError?("El chat no expuso las características esperadas.")
             centralManager.cancelPeripheralConnection(peripheral)
             return

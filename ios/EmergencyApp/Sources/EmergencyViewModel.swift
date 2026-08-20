@@ -183,7 +183,7 @@ final class EmergencyViewModel: ObservableObject {
     /// malla, pero se maneja explícito en vez de asumir.
     func makeChatViewModel(forDeviceIdHash deviceIdHash: Data) -> ChatViewModel? {
         guard let peripheral = chatPeerDirectory.peripheral(for: deviceIdHash) else { return nil }
-        return ChatViewModel(peripheral: peripheral)
+        return ChatViewModel(peripheral: peripheral, deviceIdHash: deviceIdHash)
     }
 
     /// Vive en `self` (no se crea bajo demanda como `KnownCasesViewModel`)
@@ -309,6 +309,16 @@ final class EmergencyViewModel: ObservableObject {
         scanner.onGattPacketData = { [weak self] data, peripheral in
             guard let self else { return }
             Task { @MainActor in self.handleReceivedPacketData(data, peripheral: peripheral, decode: BeaconPacketCodec.decode) }
+        }
+        // Hallazgo real de campo (#64, ver el comentario de
+        // `BleScanner.onChatHostDiscovered`): a diferencia de
+        // `onManufacturerData`/`onGattPacketData` (que alimentan el beacon
+        // general vía `handleReceivedPacketData`), esto va directo a
+        // `chatPeerDirectory` - nunca debe pisarse con el peripheral del
+        // beacon general de ese mismo peer.
+        scanner.onChatHostDiscovered = { [weak self] deviceIdHash, peripheral in
+            guard let self else { return }
+            Task { @MainActor in self.chatPeerDirectory.record(deviceIdHash: deviceIdHash, peripheral: peripheral) }
         }
         // `RelayQueue` ya despacha en el hilo principal (su scheduler es el
         // mismo `RealScheduler` de la Máquina A), así que esto no necesita
