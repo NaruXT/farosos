@@ -19,13 +19,30 @@ struct ChatView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.offset) { _, message in
-                        ChatMessageBubble(message: message, isOwn: viewModel.isOwnMessage(message))
+            // Diagnóstico temporal de campo (#64) - ver el comentario de
+            // `ChatViewModel.debugStatus`.
+            Text(viewModel.debugStatus)
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .padding(.horizontal)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(viewModel.messages.enumerated()), id: \.offset) { offset, message in
+                            ChatMessageBubble(message: message, isOwn: viewModel.isOwnMessage(message))
+                                .id(offset)
+                        }
                     }
+                    .padding()
                 }
-                .padding()
+                // Fija la lista en el último mensaje al llegar uno nuevo -
+                // mismo criterio en ambas plataformas (hallazgo de campo
+                // #64: sin esto, había que hacer scroll manual para ver la
+                // conversación al día).
+                .onChange(of: viewModel.messages.count) { newCount in
+                    guard newCount > 0 else { return }
+                    withAnimation { proxy.scrollTo(newCount - 1, anchor: .bottom) }
+                }
             }
             HStack {
                 TextField("Escribí un mensaje…", text: $draft)

@@ -70,7 +70,8 @@ public final class ChatHostSession {
     public func receivedEncryptedMessage(_ sealedData: Data) {
         guard let key = activeConnection?.symmetricKey,
               let plaintext = ChatCipher.open(sealedData, using: key),
-              let message = try? JSONDecoder().decode(ChatMessage.self, from: plaintext)
+              let text = String(data: plaintext, encoding: .utf8),
+              let message = ChatMessageWireFormat.decode(text).first
         else { return }
         appendToHistory(message)
     }
@@ -86,9 +87,9 @@ public final class ChatHostSession {
     /// un solo camino de decodificación, no dos formatos de wire distintos.
     public func sendOwnMessage(_ text: String, sentAt: UInt32) -> Data? {
         guard let key = activeConnection?.symmetricKey else { return nil }
-        let message = ChatMessage(senderDeviceIdHash: ownDeviceIdHash, text: text, sentAt: sentAt)
+        let message = ChatMessage(fromVictim: true, text: text, sentAtEpochSeconds: sentAt)
         appendToHistory(message)
-        guard let plaintext = try? JSONEncoder().encode([message]) else { return nil }
+        let plaintext = Data(ChatMessageWireFormat.encode([message]).utf8)
         return try? ChatCipher.seal(plaintext, using: key)
     }
 
@@ -99,9 +100,32 @@ public final class ChatHostSession {
         activeConnection = nil
     }
 
+    /// Una notificación GATT (a diferencia de una escritura) nunca se
+    /// fragmenta a nivel de protocolo - tiene que caber entera en un solo
+    /// paquete ATT. Con el MTU de 517 bytes que este proyecto negocia, el
+    /// máximo utilizable es 514; este valor se queda por debajo con margen
+    /// de sobra para el caso más chico que ambas plataformas negocian en la
+    /// práctica. Hallazgo de campo (#64): el historial acumulado de una
+    /// conversación real supera esto fácilmente, y una notificación más
+    /// grande que el paquete se trunca en silencio - el tag de AES-GCM
+    /// nunca calza y el receptor descarta todo el historial, no solo lo
+    /// que sobraba.
+    private static let maxSealedHistoryBytes = 480
+
+    /// Sella tantos de los mensajes más recientes como quepan en un solo
+    /// paquete de notificación - descarta los más viejos, uno por uno,
+    /// hasta que el blob cifrado entre. `nil` solo si ni el mensaje más
+    /// reciente por sí solo entra (mensaje individual demasiado largo).
     private func sealHistory(with key: SymmetricKey) -> Data? {
-        guard let plaintext = try? JSONEncoder().encode(history) else { return nil }
-        return try? ChatCipher.seal(plaintext, using: key)
+        var candidateHistory = history
+        while true {
+            let plaintext = Data(ChatMessageWireFormat.encode(candidateHistory).utf8)
+            if let sealed = try? ChatCipher.seal(plaintext, using: key), sealed.count <= Self.maxSealedHistoryBytes {
+                return sealed
+            }
+            guard !candidateHistory.isEmpty else { return nil }
+            candidateHistory.removeFirst()
+        }
     }
 
     private func appendToHistory(_ message: ChatMessage) {

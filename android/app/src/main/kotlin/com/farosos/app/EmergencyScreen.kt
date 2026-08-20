@@ -99,8 +99,7 @@ fun EmergencyScreen(viewModel: EmergencyViewModel) {
                     onMarkAttending = viewModel::markCaseAttending,
                     onMarkResolved = viewModel::markCaseResolved,
                     onOpenChat = { case ->
-                        rescuerChatCase = case
-                        viewModel.openChatWith(case)
+                        if (viewModel.openChatWith(case)) rescuerChatCase = case
                     },
                     modifier = Modifier.padding(padding)
                 )

@@ -58,9 +58,14 @@ fun CaseResolutionScreen(
                         Text(text = statusLabel(case.status), style = MaterialTheme.typography.bodySmall)
                         Text(text = "Secuencia ${case.sequence}", style = MaterialTheme.typography.bodySmall)
                         if (canActOnOtherCases) {
-                            Row(
+                            // Column, no Row: tres botones de texto en una
+                            // sola fila desbordaban el ancho de pantallas
+                            // angostas (hallazgo de campo real, #64, en un
+                            // Samsung A10 - el botón "Abrir chat" quedaba
+                            // parcialmente fuera de la vista).
+                            Column(
                                 modifier = Modifier.padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(onClick = { onMarkAttending(case) }) { Text("Voy a socorrer") }
                                 Button(onClick = { onMarkResolved(case) }) { Text("Marcar como resuelto") }

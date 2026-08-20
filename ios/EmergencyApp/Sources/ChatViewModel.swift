@@ -10,12 +10,14 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var messages: [ChatMessage] = []
     @Published private(set) var isConnected = false
     @Published private(set) var errorMessage: String?
+    /// Diagnóstico temporal de campo (#64) - se muestra en pantalla porque
+    /// la consola por USB (`devicectl --console`) no capturó el `print()`
+    /// de `ChatCentralConnection` en este dispositivo.
+    @Published private(set) var debugStatus = "init"
 
-    private let ownDeviceIdHash: Data
     private let connection = ChatCentralConnection()
 
-    init(ownDeviceIdHash: Data, peripheral: CBPeripheral) {
-        self.ownDeviceIdHash = ownDeviceIdHash
+    init(peripheral: CBPeripheral) {
         connection.onMessagesReceived = { [weak self] newMessages in
             guard let self else { return }
             self.messages.append(contentsOf: newMessages)
@@ -23,6 +25,8 @@ final class ChatViewModel: ObservableObject {
         connection.onConnected = { [weak self] in self?.isConnected = true }
         connection.onDisconnected = { [weak self] in self?.isConnected = false }
         connection.onError = { [weak self] message in self?.errorMessage = message }
+        connection.onDebugStatus = { [weak self] status in self?.debugStatus = status }
+        debugStatus = "peripheral=\(peripheral.identifier) state=\(peripheral.state.rawValue)"
         connection.connect(to: peripheral)
     }
 
@@ -34,12 +38,14 @@ final class ChatViewModel: ObservableObject {
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        connection.sendMessage(trimmed, ownDeviceIdHash: ownDeviceIdHash)
-        messages.append(ChatMessage(senderDeviceIdHash: ownDeviceIdHash, text: trimmed, sentAt: UInt32(Date().timeIntervalSince1970)))
+        connection.sendMessage(trimmed)
+        messages.append(ChatMessage(fromVictim: false, text: trimmed, sentAtEpochSeconds: UInt32(Date().timeIntervalSince1970)))
     }
 
+    /// Este view model es siempre el lado rescatista - "propio" es
+    /// simplemente "no de la víctima".
     func isOwnMessage(_ message: ChatMessage) -> Bool {
-        message.senderDeviceIdHash == ownDeviceIdHash
+        !message.fromVictim
     }
 
     func stop() {

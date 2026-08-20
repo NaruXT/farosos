@@ -81,7 +81,16 @@ final class EmergencyViewModel: ObservableObject {
     /// servicio GATT puede recibir una conexión en cualquier momento
     /// mientras el propio estado pida ayuda.
     private let chatPeerDirectory = ChatPeerDirectory()
-    private lazy var chatHostViewModel = ChatHostViewModel(ownDeviceIdHash: deviceIdHash, advertiser: advertiser)
+    // Hallazgo de campo real (#64): `lazy var` contradecía el comentario de
+    // arriba - con `lazy`, esto solo se creaba (y sus callbacks en
+    // `advertiser` recién se cableaban) la primera vez que se abría la
+    // pantalla "Mi chat". Un rescatista podía conectarse mucho antes de que
+    // el dueño del teléfono abriera esa pantalla - `advertiser.onChatHostPublicKeyRequested`
+    // seguía `nil`, así que toda lectura de la clave del host fallaba
+    // (`.invalidOffset`) sin importar ningún otro fix. Se instancia ahora
+    // en `init`, apenas `deviceIdHash` está disponible - ya no depende de
+    // que el usuario mire una pantalla en particular.
+    private var chatHostViewModel: ChatHostViewModel!
 
     /// Duraciones cortas por defecto para poder demostrar el flujo completo
     /// sin esperar minutos reales. En un dispositivo real se usarían ~120s
@@ -92,6 +101,7 @@ final class EmergencyViewModel: ObservableObject {
         let ownPublicKeyEd25519 = KeychainDeviceIdentity.publicKeyEd25519()
         let ownDeviceIdHash = DeviceIdentityHash.fromPublicKey(ownPublicKeyEd25519)
         deviceIdHash = ownDeviceIdHash
+        chatHostViewModel = ChatHostViewModel(ownDeviceIdHash: deviceIdHash, advertiser: advertiser)
         // Mitigación Sybil de Caso A (#50): costo único al instalar, no debe
         // competir con el hilo principal ni con batería en una emergencia —
         // se dispara en background y se persiste; una corrida posterior la
@@ -152,10 +162,13 @@ final class EmergencyViewModel: ObservableObject {
     func confirmOk() { machine.confirmOk() }
     func requestHelp() { machine.requestHelp() }
 
-    /// Construida bajo demanda (no guardada como propiedad) porque
-    /// `KnownCasesView` la crea cada vez que se abre la pantalla —
-    /// `refresh()` toma el snapshot real de `meshStateRegistry` en ese
-    /// momento, no hace falta mantener una instancia viva entre aperturas.
+    /// Construida bajo demanda, no guardada acá - `refresh()` toma el
+    /// snapshot real de `meshStateRegistry` en ese momento, no hace falta
+    /// mantener una instancia viva entre aperturas. El *llamador* sí debe
+    /// invocar esto una sola vez por apertura y guardar el resultado
+    /// (hallazgo de campo #64, ver el comentario de `EmergencyView.knownCasesViewModel`)
+    /// - llamarla de nuevo en cada re-render mientras la pantalla sigue
+    /// abierta pisa el snapshot ya cargado con uno vacío.
     func makeKnownCasesViewModel() -> KnownCasesViewModel {
         KnownCasesViewModel(
             ownDeviceIdHash: deviceIdHash,
@@ -170,7 +183,7 @@ final class EmergencyViewModel: ObservableObject {
     /// malla, pero se maneja explícito en vez de asumir.
     func makeChatViewModel(forDeviceIdHash deviceIdHash: Data) -> ChatViewModel? {
         guard let peripheral = chatPeerDirectory.peripheral(for: deviceIdHash) else { return nil }
-        return ChatViewModel(ownDeviceIdHash: self.deviceIdHash, peripheral: peripheral)
+        return ChatViewModel(peripheral: peripheral)
     }
 
     /// Vive en `self` (no se crea bajo demanda como `KnownCasesViewModel`)

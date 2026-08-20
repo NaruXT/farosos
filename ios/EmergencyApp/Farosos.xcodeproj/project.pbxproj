@@ -56,7 +56,7 @@
 		114E6E42A8EF96BA682A979E /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		1726CD90AB5F23C3D2E36C9B /* FirebaseIdentityConfirmationUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseIdentityConfirmationUploader.swift; sourceTree = "<group>"; };
 		1BD799DFDF52D69B12CE0888 /* EmergencyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmergencyView.swift; sourceTree = "<group>"; };
-		2B07047A9350FF389270ADB4 /* EmergencyApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EmergencyApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B07047A9350FF389270ADB4 /* Farosos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Farosos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3528BA983C47C653155442C3 /* KeychainParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainParticipantStore.swift; sourceTree = "<group>"; };
 		4F054822657F0D778DC9EC36 /* RegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationView.swift; sourceTree = "<group>"; };
 		56C0D7AF1A5D7F16DBD3916D /* KeychainResolutionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainResolutionStore.swift; sourceTree = "<group>"; };
@@ -161,7 +161,7 @@
 		96B0F45F67B5880698713AFB /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2B07047A9350FF389270ADB4 /* EmergencyApp.app */,
+				2B07047A9350FF389270ADB4 /* Farosos.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -205,7 +205,7 @@
 				C062AFF83274A22E4A7DE982 /* FirebaseFirestore */,
 			);
 			productName = EmergencyApp;
-			productReference = 2B07047A9350FF389270ADB4 /* EmergencyApp.app */;
+			productReference = 2B07047A9350FF389270ADB4 /* Farosos.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -216,8 +216,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 3E7DDF40C92E56186D8DC499 /* Build configuration list for PBXProject "Farosos" */;
 			developmentRegion = en;
@@ -301,6 +299,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6W2BCB3L3T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Farosos usa Bluetooth para difundir y recibir beacons de estado con teléfonos cercanos, sin internet ni señal celular.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -443,6 +442,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6W2BCB3L3T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Farosos usa Bluetooth para difundir y recibir beacons de estado con teléfonos cercanos, sin internet ni señal celular.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -36,7 +36,7 @@ final class ChatHostSessionTests: XCTestCase {
     }
 
     func testAFullRoundTripBetweenHostAndAnIndependentEphemeralPeerWorks() throws {
-        let history = [ChatMessage(senderDeviceIdHash: ownHash, text: "estado inicial", sentAt: 1)]
+        let history = [ChatMessage(fromVictim: true, text: "estado inicial", sentAtEpochSeconds: 1)]
         let session = ChatHostSession(ownDeviceIdHash: ownHash, initialHistory: history)
         guard let hostPublicKeyData = session.peerConnected() else {
             return XCTFail("se esperaba una clave pública, sin conexión activa previa")
@@ -50,7 +50,7 @@ final class ChatHostSessionTests: XCTestCase {
         let guestKey = try EphemeralKeyAgreement.deriveSymmetricKey(ownPrivateKey: guestPrivateKey, peerPublicKeyData: hostPublicKeyData)
         let opened = ChatCipher.open(sealedHistory, using: guestKey)
         XCTAssertNotNil(opened)
-        let decodedHistory = try JSONDecoder().decode([ChatMessage].self, from: opened!)
+        let decodedHistory = ChatMessageWireFormat.decode(String(data: opened!, encoding: .utf8)!)
         XCTAssertEqual(decodedHistory, history)
     }
 
@@ -61,9 +61,8 @@ final class ChatHostSessionTests: XCTestCase {
         _ = session.receivedPeerPublicKey(guestPublicKeyData)
         let guestKey = try EphemeralKeyAgreement.deriveSymmetricKey(ownPrivateKey: guestPrivateKey, peerPublicKeyData: hostPublicKeyData)
 
-        let guestHash = Data([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])
-        let incoming = ChatMessage(senderDeviceIdHash: guestHash, text: "estoy consciente", sentAt: 2)
-        let sealed = try ChatCipher.seal(JSONEncoder().encode(incoming), using: guestKey)
+        let incoming = ChatMessage(fromVictim: false, text: "estoy consciente", sentAtEpochSeconds: 2)
+        let sealed = try ChatCipher.seal(Data(ChatMessageWireFormat.encode([incoming]).utf8), using: guestKey)
 
         var observedHistory: [ChatMessage]?
         session.onHistoryChanged = { observedHistory = $0 }
@@ -98,7 +97,7 @@ final class ChatHostSessionTests: XCTestCase {
 
         XCTAssertEqual(session.history.last?.text, "voy a resistir")
         let opened = ChatCipher.open(sealed, using: guestKey)
-        let decoded = try JSONDecoder().decode([ChatMessage].self, from: opened!)
+        let decoded = ChatMessageWireFormat.decode(String(data: opened!, encoding: .utf8)!)
         XCTAssertEqual(decoded.count, 1)
         XCTAssertEqual(decoded.first?.text, "voy a resistir")
     }

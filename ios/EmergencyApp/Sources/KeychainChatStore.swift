@@ -10,12 +10,11 @@ enum KeychainChatStore {
     private static let account = "directChatHistory"
 
     static func history() -> [ChatMessage] {
-        guard let json = KeychainStore.read(account: account), let data = json.data(using: .utf8) else { return [] }
-        return (try? JSONDecoder().decode([ChatMessage].self, from: data)) ?? []
+        guard let raw = KeychainStore.read(account: account) else { return [] }
+        return ChatMessageWireFormat.decode(raw)
     }
 
     static func save(_ history: [ChatMessage]) {
-        guard let data = try? JSONEncoder().encode(history), let json = String(data: data, encoding: .utf8) else { return }
-        KeychainStore.write(json, account: account)
+        KeychainStore.write(ChatMessageWireFormat.encode(history), account: account)
     }
 }

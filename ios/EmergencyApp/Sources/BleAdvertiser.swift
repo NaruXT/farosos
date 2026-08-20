@@ -27,6 +27,18 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
     var onChatMessageWritten: ((Data) -> Void)?
     var onChatGuestDisconnected: (() -> Void)?
 
+    /// Hallazgo de campo real (#64): antes, `setChatHostPublicKey` solo se
+    /// llamaba desde `didSubscribeTo` (cuando el rescatista habilita
+    /// notificaciones) - pero el rescatista necesita *leer* esta clave
+    /// mucho antes en su propio protocolo, para poder escribir la suya y
+    /// recién después llegar a habilitar notificaciones. La clave nunca
+    /// llegaba a existir a tiempo para la primera lectura real (fallaba con
+    /// `.invalidOffset`, confundido con "offset fuera de rango" - ver
+    /// `respondToChatHostPublicKeyRead`). Ahora se genera perezosamente, en
+    /// la primera lectura real, sin depender de ningún paso posterior del
+    /// handshake.
+    var onChatHostPublicKeyRequested: (() -> Data?)?
+
     private lazy var peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
     private var currentData: Data?
     private var isServiceAdded = false
@@ -42,6 +54,23 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
     private var messageCharacteristic: CBMutableCharacteristic?
     private var hostPublicKeyData: Data?
     private var subscribedChatCentral: CBCentral?
+    /// Hallazgo de campo real (#64): `updateValue` puede devolver `false`
+    /// cuando la cola de transmisión de CoreBluetooth está ocupada - muy
+    /// probable justo después de la ráfaga de conectar/descubrir/leer/
+    /// escribir/suscribir que precede al primer mensaje de una sesión. Sin
+    /// reintentar vía `peripheralManagerIsReady(toUpdateSubscribers:)`, esa
+    /// notificación se pierde en silencio (mensajes de la víctima que nunca
+    /// llegan al rescatista, aunque `notifyChatMessage` sí se haya llamado).
+    private var pendingChatNotifications: [Data] = []
+    /// Hallazgo de campo real (#64): el central que va a chatear se
+    /// identifica en la **lectura** de la clave del host (primer paso real
+    /// del protocolo), no en la suscripción a notificaciones (que llega
+    /// recién al final - ver `ChatGattClient`/`ChatCentralConnection`). Con
+    /// `subscribedChatCentral` como único guardia, la escritura de la clave
+    /// del rescatista (que pasa *antes* de suscribirse) nunca coincidía con
+    /// nada - se aceptaba con `.success` pero se descartaba en silencio, y
+    /// la clave de sesión nunca se derivaba en este lado.
+    private var activeChatCentral: CBCentral?
 
     /// Reemplaza el payload que este nodo publica. El valor de la
     /// característica se resuelve dinámicamente en `didReceiveRead` a
@@ -80,8 +109,32 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
     /// suscrito — la capa de `ChatHostSession` ya garantiza que esto solo
     /// se llama con una conexión activa.
     func notifyChatMessage(_ data: Data) {
+        // Hallazgo de campo (#64): la clave del invitado se escribe *antes*
+        // de que termine de suscribirse a notificaciones (CCCD) - el
+        // historial inicial se dispara desde `onChatGuestPublicKeyWritten`,
+        // así que `subscribedChatCentral` casi siempre sigue en `nil` en ese
+        // momento. Exigirlo acá tiraba el historial en silencio. Se encola
+        // sin condición y se vacía tanto acá como al llegar la suscripción
+        // real (`didSubscribeTo`).
+        guard messageCharacteristic != nil else { return }
+        pendingChatNotifications.append(data)
+        flushPendingChatNotifications()
+    }
+
+    /// Reintenta en orden hasta que `updateValue` devuelva `false` (cola
+    /// llena de nuevo) - CoreBluetooth avisa cuándo reintentar vía
+    /// `peripheralManagerIsReady(toUpdateSubscribers:)`.
+    private func flushPendingChatNotifications() {
         guard let messageCharacteristic, let subscribedChatCentral else { return }
-        peripheralManager.updateValue(data, for: messageCharacteristic, onSubscribedCentrals: [subscribedChatCentral])
+        while let next = pendingChatNotifications.first {
+            let sent = peripheralManager.updateValue(next, for: messageCharacteristic, onSubscribedCentrals: [subscribedChatCentral])
+            if !sent { break }
+            pendingChatNotifications.removeFirst()
+        }
+    }
+
+    func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        flushPendingChatNotifications()
     }
 
     private func addChatServiceIfNeeded() {
@@ -121,6 +174,8 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
         hostPublicKeyCharacteristic = nil
         messageCharacteristic = nil
         hostPublicKeyData = nil
+        activeChatCentral = nil
+        pendingChatNotifications.removeAll()
         if subscribedChatCentral != nil {
             subscribedChatCentral = nil
             onChatGuestDisconnected?()
@@ -204,20 +259,51 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
     }
 
     private func respondToChatHostPublicKeyRead(_ request: CBATTRequest) {
-        guard let data = hostPublicKeyData, request.offset <= data.count else {
+        // Hallazgo real de code review (#64): antes de este chequeo, un
+        // segundo central que leyera esta característica mientras ya había
+        // uno activo recibía la clave cacheada de `hostPublicKeyData` igual
+        // (el `??` de abajo nunca llegaba a `onChatHostPublicKeyRequested`,
+        // que es donde vivía el único chequeo de "ya hay uno conectado") -
+        // la lectura respondía `.success` en silencio y el segundo
+        // rescatista se quedaba esperando para siempre sin ningún error
+        // visible. Android sí rechaza explícito (`cancelConnection`) - acá
+        // se iguala rechazando la lectura misma.
+        if let activeChatCentral, activeChatCentral != request.central {
+            peripheralManager.respond(to: request, withResult: .insufficientResources)
+            return
+        }
+        // Genera la clave perezosamente en la primera lectura real, si
+        // todavía no existe - ver el comentario de `onChatHostPublicKeyRequested`.
+        let data = hostPublicKeyData ?? onChatHostPublicKeyRequested?()
+        guard let data, request.offset <= data.count else {
             peripheralManager.respond(to: request, withResult: .invalidOffset)
             return
+        }
+        hostPublicKeyData = data
+        // Recién acá se sabe quién es "el" central activo de este chat -
+        // el primero en leer la clave con éxito se queda con el slot; uno
+        // ya en curso queda protegido porque `onChatHostPublicKeyRequested`
+        // ya devolvió `nil` para él más arriba si había otra conexión activa.
+        if activeChatCentral == nil {
+            activeChatCentral = request.central
         }
         request.value = data.subdata(in: request.offset..<data.count)
         peripheralManager.respond(to: request, withResult: .success)
     }
 
-    /// Solo procesa escrituras del central ya suscripto/activo (ver
-    /// `didSubscribeTo`) — evita que una segunda conexión que nunca llegó a
-    /// ser la activa pueda inyectar datos en la sesión de otro.
+    /// Solo procesa escrituras del central que ya leyó la clave del host
+    /// (ver `activeChatCentral`) - evita que una segunda conexión que nunca
+    /// llegó a ser la activa pueda inyectar datos en la sesión de otro.
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for request in requests {
-            if request.central == subscribedChatCentral, let value = request.value {
+            // Mismo hallazgo que `respondToChatHostPublicKeyRead` - antes se
+            // respondía `.success` igual aunque la escritura de un central
+            // no-activo se descartara en silencio. Ahora se rechaza explícito.
+            guard request.central == activeChatCentral else {
+                peripheralManager.respond(to: request, withResult: .insufficientResources)
+                continue
+            }
+            if let value = request.value {
                 switch request.characteristic.uuid {
                 case ChatGattService.guestPublicKeyCharacteristicUUID:
                     onChatGuestPublicKeyWritten?(value)
@@ -244,11 +330,17 @@ final class BleAdvertiser: NSObject, CBPeripheralManagerDelegate {
         guard characteristic.uuid == ChatGattService.messageCharacteristicUUID, subscribedChatCentral == nil else { return }
         subscribedChatCentral = central
         onChatGuestConnected?()
+        flushPendingChatNotifications()
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
         guard characteristic.uuid == ChatGattService.messageCharacteristicUUID, central == subscribedChatCentral else { return }
         subscribedChatCentral = nil
+        if activeChatCentral == central {
+            activeChatCentral = nil
+            hostPublicKeyData = nil
+        }
+        pendingChatNotifications.removeAll()
         onChatGuestDisconnected?()
     }
 }

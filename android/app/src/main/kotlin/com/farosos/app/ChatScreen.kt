@@ -1,17 +1,22 @@
 package com.farosos.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,20 +42,42 @@ fun ChatScreen(
     connectionStatus: String? = null
 ) {
     var draft by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    // Fija la lista en el último mensaje al llegar uno nuevo - mismo
+    // criterio en ambas plataformas (hallazgo de campo #64: sin esto, había
+    // que hacer scroll manual para ver la conversación al día).
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
 
     Column(modifier = modifier.padding(16.dp)) {
         if (connectionStatus != null) {
             Text(connectionStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             items(messages) { message ->
-                Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                    Text(
-                        text = if (isOwnSide(message)) "Yo" else "Otro",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Text(text = message.text)
+                val isOwn = isOwnSide(message)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = if (isOwn) Arrangement.End else Arrangement.Start
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .background(
+                                if (isOwn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = if (isOwn) "Yo" else "Otro",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Text(text = message.text)
+                    }
                 }
             }
         }

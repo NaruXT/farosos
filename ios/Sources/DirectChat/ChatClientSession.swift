@@ -44,19 +44,19 @@ public final class ChatClientSession {
     public func receivedEncryptedPayload(_ sealedData: Data) {
         guard let key = symmetricKey,
               let plaintext = ChatCipher.open(sealedData, using: key),
-              let messages = try? JSONDecoder().decode([ChatMessage].self, from: plaintext)
+              let text = String(data: plaintext, encoding: .utf8)
         else { return }
-        onMessagesReceived?(messages)
+        onMessagesReceived?(ChatMessageWireFormat.decode(text))
     }
 
     /// El rescatista escribe un mensaje propio — devuelve el blob cifrado
     /// listo para escribir en la característica de mensajes del host. `nil`
     /// si todavía no se derivó la clave simétrica (el handshake no
     /// terminó).
-    public func encryptOwnMessage(_ text: String, ownDeviceIdHash: Data, sentAt: UInt32) -> Data? {
+    public func encryptOwnMessage(_ text: String, sentAt: UInt32) -> Data? {
         guard let key = symmetricKey else { return nil }
-        let message = ChatMessage(senderDeviceIdHash: ownDeviceIdHash, text: text, sentAt: sentAt)
-        guard let plaintext = try? JSONEncoder().encode([message]) else { return nil }
+        let message = ChatMessage(fromVictim: false, text: text, sentAtEpochSeconds: sentAt)
+        let plaintext = Data(ChatMessageWireFormat.encode([message]).utf8)
         return try? ChatCipher.seal(plaintext, using: key)
     }
 }

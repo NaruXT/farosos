@@ -28,12 +28,16 @@ final class ChatHostViewModel: ObservableObject {
             KeychainChatStore.save(history)
         }
 
+        // Hallazgo de campo (#64): la clave propia ya no se genera acá -
+        // `onChatHostPublicKeyRequested` la genera perezosamente en la
+        // primera lectura real del rescatista (ver el comentario de ese
+        // callback en `BleAdvertiser`). `onChatGuestConnected` sigue
+        // existiendo solo para la UI (`hasGuestConnected`).
+        advertiser.onChatHostPublicKeyRequested = { [weak self] in
+            self?.session.peerConnected()
+        }
         advertiser.onChatGuestConnected = { [weak self] in
-            guard let self else { return }
-            self.hasGuestConnected = true
-            if let hostPublicKeyData = self.session.peerConnected() {
-                self.advertiser.setChatHostPublicKey(hostPublicKeyData)
-            }
+            self?.hasGuestConnected = true
         }
         advertiser.onChatGuestPublicKeyWritten = { [weak self] data in
             guard let self, let sealedHistory = self.session.receivedPeerPublicKey(data) else { return }
@@ -55,7 +59,9 @@ final class ChatHostViewModel: ObservableObject {
         advertiser.notifyChatMessage(sealed)
     }
 
+    /// Este view model es siempre el lado víctima/host - "propio" es
+    /// simplemente "de la víctima" (mismo criterio que Android, #63).
     func isOwnMessage(_ message: ChatMessage) -> Bool {
-        message.senderDeviceIdHash == ownDeviceIdHash
+        message.fromVictim
     }
 }

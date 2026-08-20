@@ -16,13 +16,22 @@ struct ChatHostView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.offset) { _, message in
-                        ChatMessageBubble(message: message, isOwn: viewModel.isOwnMessage(message))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(viewModel.messages.enumerated()), id: \.offset) { offset, message in
+                            ChatMessageBubble(message: message, isOwn: viewModel.isOwnMessage(message))
+                                .id(offset)
+                        }
                     }
+                    .padding()
                 }
-                .padding()
+                // Ver el comentario equivalente en `ChatView` (hallazgo de
+                // campo #64) - mismo criterio en ambas plataformas.
+                .onChange(of: viewModel.messages.count) { newCount in
+                    guard newCount > 0 else { return }
+                    withAnimation { proxy.scrollTo(newCount - 1, anchor: .bottom) }
+                }
             }
             HStack {
                 TextField("Escribí un mensaje…", text: $draft)

@@ -13,6 +13,8 @@ import PacketCodec
 @MainActor
 final class KnownCasesViewModel: ObservableObject {
     @Published private(set) var cases: [MeshParticipantState] = []
+    /// Diagnóstico temporal de campo (#64).
+    @Published private(set) var debugAllStates = ""
 
     private let ownDeviceIdHash: Data
     private let meshStateRegistry: MeshStateRegistry
@@ -28,9 +30,12 @@ final class KnownCasesViewModel: ObservableObject {
     /// sea `AYUDA`/`SILENCIO_TIMEOUT` — mismos dos únicos estados a los que
     /// aplica "resuelto"/"atendiendo" (#55).
     func refresh() {
-        cases = meshStateRegistry.allStates().filter { state in
+        let allStates = meshStateRegistry.allStates()
+        cases = allStates.filter { state in
             state.deviceIdHash != ownDeviceIdHash && (state.status == .ayuda || state.status == .silencioTimeout)
         }
+        debugAllStates = allStates.map { "\($0.deviceIdHash.shortHex) status=\($0.status) seq=\($0.sequence)" }.joined(separator: " | ")
+        if debugAllStates.isEmpty { debugAllStates = "(vacío)" }
     }
 
     /// Solo guarda localmente y encola — la subida real la dispara

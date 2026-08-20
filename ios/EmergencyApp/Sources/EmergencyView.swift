@@ -7,6 +7,21 @@ struct EmergencyView: View {
     @State private var showingKnownCases = false
     @State private var showingOwnChat = false
     @State private var chatDeviceIdHash: Data?
+    /// Mismo hallazgo de campo (#64) que `knownCasesViewModel`, más serio
+    /// acá: `ChatViewModel.init` dispara `connection.connect(to:)` de
+    /// inmediato - reconstruirlo en cada re-render reconectaba el GATT del
+    /// chat una y otra vez mientras la pantalla seguía abierta, probable
+    /// causa de varios "se quedó en conectando…" de esta misma sesión.
+    @State private var chatViewModel: ChatViewModel?
+    /// Hallazgo de campo (#64): antes, `KnownCasesView` recibía
+    /// `viewModel.makeKnownCasesViewModel()` llamado directo dentro del
+    /// closure de `.sheet` - SwiftUI reevalúa ese closure en cada re-render
+    /// del padre mientras la hoja sigue presentada (no solo al abrirla), y
+    /// `logEntries` cambia con cada beacon recibido. Cada reevaluación creaba
+    /// una instancia nueva con `cases` vacío, reemplazando la que ya tenía
+    /// el snapshot cargado - el caso aparecía un instante y desaparecía. Se
+    /// crea una sola vez, al tocar "Casos", y se guarda acá.
+    @State private var knownCasesViewModel: KnownCasesViewModel?
 
     var body: some View {
         NavigationStack {
@@ -39,7 +54,10 @@ struct EmergencyView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Casos") { showingKnownCases = true }
+                    Button("Casos") {
+                        knownCasesViewModel = viewModel.makeKnownCasesViewModel()
+                        showingKnownCases = true
+                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Log") { showingLog = true }
@@ -52,14 +70,17 @@ struct EmergencyView: View {
                 )
             }
             .sheet(isPresented: $showingKnownCases) {
-                KnownCasesView(
-                    viewModel: viewModel.makeKnownCasesViewModel(),
-                    ownState: viewModel.state,
-                    onOpenChat: { deviceIdHash in
-                        showingKnownCases = false
-                        chatDeviceIdHash = deviceIdHash
-                    }
-                )
+                if let knownCasesViewModel {
+                    KnownCasesView(
+                        viewModel: knownCasesViewModel,
+                        ownState: viewModel.state,
+                        onOpenChat: { deviceIdHash in
+                            showingKnownCases = false
+                            chatViewModel = viewModel.makeChatViewModel(forDeviceIdHash: deviceIdHash)
+                            chatDeviceIdHash = deviceIdHash
+                        }
+                    )
+                }
             }
             .sheet(isPresented: $showingOwnChat) {
                 NavigationStack {
@@ -68,9 +89,12 @@ struct EmergencyView: View {
             }
             .sheet(item: Binding(
                 get: { chatDeviceIdHash.map { ChatTarget(deviceIdHash: $0) } },
-                set: { chatDeviceIdHash = $0?.deviceIdHash }
-            )) { target in
-                if let chatViewModel = viewModel.makeChatViewModel(forDeviceIdHash: target.deviceIdHash) {
+                set: { newValue in
+                    chatDeviceIdHash = newValue?.deviceIdHash
+                    if newValue == nil { chatViewModel = nil }
+                }
+            )) { _ in
+                if let chatViewModel {
                     NavigationStack { ChatView(viewModel: chatViewModel) }
                 } else {
                     Text("Ya no se puede conectar a este caso.")

@@ -291,7 +291,30 @@ class EmergencyViewModel @JvmOverloads constructor(
         // El servicio GATT del chat directo solo está activo mientras la
         // propia persona podría necesitar que alguien se conecte (#61,
         // decisión de batería) — se apaga en cualquier otro estado.
-        if (newState.isRequestingHelp) chatGattServer.start() else chatGattServer.stop()
+        //
+        // Hallazgo de campo real (#64, verificación con hardware iOS+Android
+        // real): `scanner.pauseGattConnects()` en `onGuestConnected` llegaba
+        // demasiado tarde. Mientras se espera un rescatista (nadie conectado
+        // todavía), `BleScanner` seguía activo y - al ver el beacon propio
+        // de un iPhone cercano (que se anuncia por GATT, no manufacturer
+        // data, ver decisión 13) - abría su propia conexión saliente
+        // (`connectForGattRead`) al mismo peer que intentaba conectarse al
+        // chat. BLE no permite dos conexiones simultáneas entre el mismo par
+        // de direcciones: la conexión del escáner ganaba el enlace, y
+        // `BluetoothGattServerCallback.onConnectionStateChange` (que reporta
+        // el estado ACL con ese dispositivo sin importar qué rol lo inició)
+        // reflejaba esa conexión ajena como si fuera el rescatista entrando
+        // al chat - explicando por qué nunca se veían lecturas/escrituras de
+        // características reales. Pausar el escáner desde que el chat
+        // arranca (no solo cuando ya hay alguien conectado) cierra esa
+        // ventana de carrera por completo.
+        if (newState.isRequestingHelp) {
+            scanner.pauseGattConnects()
+            chatGattServer.start()
+        } else {
+            chatGattServer.stop()
+            scanner.resumeGattConnects()
+        }
     }
 
     /** Conecta el historial del propio canal (rol víctima) con la persistencia local y expone los cambios a la UI. */
@@ -302,6 +325,32 @@ class EmergencyViewModel @JvmOverloads constructor(
             ChatHistoryStore.replaceHistory(history, application)
         }
         chatGattServer.onError = onMain { error -> appendLogEntry(LogEntry.Kind.Info(error)) }
+        // Ver el comentario de `BleAdvertiser.pause()` (#64): el reinicio de
+        // advertising del beacon general cada 1s (rotación de `RelayQueue`)
+        // podría desestabilizar la conexión GATT del chat en algunos
+        // chipsets - se pausa mientras haya un rescatista conectado.
+        // Hallazgo de campo real (#64): `pauseGattConnects()` por sí solo no
+        // alcanzó - seguía cayéndose la conexión cada ~2-3s. El escaneo BLE
+        // en sí (`SCAN_MODE_LOW_LATENCY`, continuo) compite por el radio con
+        // una conexión GATT de servidor activa en este chipset (Samsung
+        // A10), no solo los intentos de `connectGatt()` que dispara. Mismo
+        // patrón completo que ya usa `openChatWith` del lado rescatista
+        // (`pauseGattConnects()` + `scanner.stop()`) - acá nunca se había
+        // conectado al rol de host.
+        chatGattServer.onGuestConnected = {
+            handler.post {
+                advertiser.pause()
+                scanner.pauseGattConnects()
+                scanner.stop()
+            }
+        }
+        chatGattServer.onGuestDisconnected = {
+            handler.post {
+                advertiser.resume()
+                scanner.resumeGattConnects()
+                if (isForeground) scanner.start()
+            }
+        }
 
         scanner.onChatHostDiscovered = onMain2 { hostDeviceIdHash, device ->
             knownChatHosts[hostDeviceIdHash.shortHex()] = device
@@ -314,6 +363,10 @@ class EmergencyViewModel @JvmOverloads constructor(
             handler.post {
                 isRescuerChatConnected = false
                 rescuerChatMessages.clear()
+                // Ver el comentario de `openChatWith`/`pauseGattConnects()` -
+                // acá se reanuda el escaneo al cerrar/perder el chat.
+                scanner.resumeGattConnects()
+                if (isForeground) scanner.start()
             }
         }
         chatGattClient.onMessagesReceived = onMain { messages -> rescuerChatMessages.addAll(messages) }
@@ -326,26 +379,62 @@ class EmergencyViewModel @JvmOverloads constructor(
      * "atendiendo"/"resuelto" (no el propio caso, no mientras se pide
      * ayuda). Si todavía no se vio ningún anuncio del chat de ese caso
      * (`knownChatHosts` vacío para ese hash), no hay nada a lo que
-     * conectarse todavía — la UI debe indicar que siga esperando.
+     * conectarse todavía.
+     *
+     * Devuelve si efectivamente arrancó un intento de conexión - hallazgo de
+     * campo (#64): antes, el caller marcaba la UI como "conectando" sin
+     * importar el resultado de esta función, así que una búsqueda fallida
+     * dejaba la pantalla pegada en "Conectando..." para siempre, sin ninguna
+     * conexión real en curso. El caller debe usar este valor para decidir si
+     * mostrar la pantalla de chat o no.
      */
-    fun openChatWith(case: MeshParticipantState) {
+    fun openChatWith(case: MeshParticipantState): Boolean {
         val device = knownChatHosts[case.deviceIdHash.shortHex()] ?: run {
             appendLogEntry(LogEntry.Kind.Info("Todavía no se detectó el chat de ese caso — esperando a estar más cerca."))
-            return
+            return false
         }
         rescuerChatMessages.clear()
-        chatGattClient.connect(device)
+        // `pauseGattConnects()` primero, sincrónico - cierra la ventana de
+        // carrera que `stop()` solo no cerraba a tiempo (ver su comentario
+        // en BleScanner). `stop()` después, para no seguir gastando radio
+        // en escanear mientras el chat está activo.
+        scanner.pauseGattConnects()
+        scanner.stop()
+        // Hallazgo de campo (#64): si el escáner tenía una conexión GATT
+        // "straggler" en curso a este mismo dispositivo justo cuando se
+        // tocó "Abrir chat", `stop()` la cierra, pero el stack Bluetooth de
+        // algunos teléfonos (confirmado en un Samsung A10 real) no libera
+        // esa conexión lo bastante rápido - abrir la del chat inmediatamente
+        // después la mata al instante (`status=22`, terminada localmente).
+        // Un margen chico alcanza para que el stack libere la dirección
+        // antes de intentar la conexión real.
+        handler.postDelayed({ chatGattClient.connect(device) }, 400)
+        return true
     }
 
     fun closeChat() {
         chatGattClient.disconnect()
         isRescuerChatConnected = false
         rescuerChatMessages.clear()
+        scanner.resumeGattConnects()
+        if (isForeground) scanner.start()
     }
 
-    /** Manda un mensaje como rescatista sobre el chat actualmente abierto. */
+    /**
+     * Manda un mensaje como rescatista sobre el chat actualmente abierto.
+     *
+     * A diferencia del lado víctima (`ChatHostSession.sendOwnMessage`, que
+     * mantiene su propio historial), el cliente rescatista no tiene eco del
+     * host - se agrega localmente antes de enviar para que la propia UI lo
+     * muestre de inmediato, mismo criterio que `ChatViewModel.send()` en iOS
+     * (hallazgo de campo #64: sin esto, el rescatista nunca veía sus propios
+     * mensajes enviados).
+     */
     fun sendRescuerChatMessage(text: String) {
-        chatGattClient.sendMessage(text)
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        chatGattClient.sendMessage(trimmed)
+        rescuerChatMessages.add(ChatMessage(fromVictim = false, text = trimmed, sentAtEpochSeconds = System.currentTimeMillis() / 1000))
     }
 
     /** Manda un mensaje propio (rol víctima) sobre el chat que este teléfono está hosteando. */

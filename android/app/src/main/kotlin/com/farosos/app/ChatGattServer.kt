@@ -42,6 +42,9 @@ class ChatGattServer(
     private val ownDeviceIdHash: ByteArray
 ) {
     var onError: ((String) -> Unit)? = null
+    /** Ver el comentario de `BleAdvertiser.pause()` - el llamador pausa/reanuda el beacon general con esto. */
+    var onGuestConnected: (() -> Unit)? = null
+    var onGuestDisconnected: (() -> Unit)? = null
 
     private val bluetoothManager: BluetoothManager?
         get() = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -80,31 +83,31 @@ class ChatGattServer(
     private fun buildService(): BluetoothGattService {
         val service = BluetoothGattService(DirectChatGattService.SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
-        val ephemeralPublicKeyCharacteristic = BluetoothGattCharacteristic(
-            DirectChatGattService.EPHEMERAL_PUBLIC_KEY_CHARACTERISTIC_UUID,
-            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
-            BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
+        val hostPublicKeyCharacteristic = BluetoothGattCharacteristic(
+            DirectChatGattService.HOST_PUBLIC_KEY_CHARACTERISTIC_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ
         )
-        val messageWriteCharacteristic = BluetoothGattCharacteristic(
-            DirectChatGattService.MESSAGE_WRITE_CHARACTERISTIC_UUID,
+        val guestPublicKeyCharacteristic = BluetoothGattCharacteristic(
+            DirectChatGattService.GUEST_PUBLIC_KEY_CHARACTERISTIC_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
-        val messageNotifyCharacteristic = BluetoothGattCharacteristic(
-            DirectChatGattService.MESSAGE_NOTIFY_CHARACTERISTIC_UUID,
-            BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-            0
+        val messageCharacteristic = BluetoothGattCharacteristic(
+            DirectChatGattService.MESSAGE_CHARACTERISTIC_UUID,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
         )
-        messageNotifyCharacteristic.addDescriptor(
+        messageCharacteristic.addDescriptor(
             BluetoothGattDescriptor(
                 DirectChatGattService.CLIENT_CHARACTERISTIC_CONFIG_UUID,
                 BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
             )
         )
 
-        service.addCharacteristic(ephemeralPublicKeyCharacteristic)
-        service.addCharacteristic(messageWriteCharacteristic)
-        service.addCharacteristic(messageNotifyCharacteristic)
+        service.addCharacteristic(hostPublicKeyCharacteristic)
+        service.addCharacteristic(guestPublicKeyCharacteristic)
+        service.addCharacteristic(messageCharacteristic)
         return service
     }
 
@@ -114,9 +117,16 @@ class ChatGattServer(
             onError?.invoke("Este dispositivo no tiene BluetoothLeAdvertiser disponible")
             return
         }
+        // Hallazgo de campo real (#64): LOW_LATENCY + TX_POWER_HIGH (muy
+        // agresivo) coincide con conexiones que se caen cada 1-3s en este
+        // chipset (Samsung A10) al conectarse un central iOS - nunca llega
+        // a completar el descubrimiento de servicios. BALANCED + MEDIUM es
+        // la configuración recomendada de Android para chipsets de gama
+        // baja cuando hay una conexión activa que sostener, no solo
+        // visibilidad rápida.
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
             .setConnectable(true)
             .build()
         val data = AdvertiseData.Builder()
@@ -145,25 +155,56 @@ class ChatGattServer(
         advertiseCallback = null
     }
 
+    @SuppressLint("MissingPermission")
     private fun resetSession() {
+        val hadGuest = connectedDevice != null
         session.connectionClosed()
         connectedDevice = null
         ownEphemeralKeyPair = null
         sessionKey = null
+        if (hadGuest) {
+            onGuestDisconnected?.invoke()
+            // Ver el comentario de `onConnectionStateChange` (#64) - se
+            // reanuda para que otro rescatista pueda descubrir y conectarse
+            // después de que este se fue, siempre que `gattServer` siga
+            // abierto (si venimos de `stop()`, ya es `null` y esto es no-op).
+            bluetoothManager?.let { manager -> gattServer?.let { startAdvertising(manager) } }
+        }
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+            android.util.Log.d("FarososDiag", "server onServiceAdded: status=$status uuid=${service.uuid} chars=${service.characteristics.size}")
+        }
+
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            android.util.Log.d("FarososDiag", "server onConnectionStateChange: status=$status newState=$newState device=${device.address}")
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     if (!session.acceptConnection()) {
                         // Ya hay un rescatista conectado — rechaza al segundo (#63, AC "una sola conexión a la vez").
+                        android.util.Log.d("FarososDiag", "server: acceptConnection()=false, cancelando")
                         gattServer?.cancelConnection(device)
                         return
                     }
                     connectedDevice = device
                     ownEphemeralKeyPair = EphemeralKeyExchange.generateKeyPair()
+                    android.util.Log.d("FarososDiag", "server: conexión aceptada, keyPair generado")
+                    // Hallazgo de campo real (#64): el advertising del chat
+                    // (LOW_LATENCY + TX_POWER_HIGH) seguía transmitiendo sin
+                    // parar incluso con un central ya conectado - solo se
+                    // apagaba al salir de `AYUDA_SOLICITADA` por completo.
+                    // Esa contención de radio (anunciar agresivo + sostener
+                    // una conexión GATT) tumbaba la conexión cada 1-3s en
+                    // este chipset (Samsung A10), sin que el central
+                    // llegara nunca a leer/escribir ninguna característica.
+                    // Un periférico BLE normal deja de anunciarse al
+                    // conectarse - acá además solo se admite una conexión
+                    // a la vez (#63), así que no hace falta seguir
+                    // anunciando mientras ya hay alguien.
+                    stopAdvertising()
+                    onGuestConnected?.invoke()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     if (device.address == connectedDevice?.address) resetSession()
@@ -185,10 +226,11 @@ class ChatGattServer(
             // por si Android entrega un callback tardío de una conexión ya
             // rechazada por `acceptConnection()` antes de que termine de
             // cerrarse (#63, "una sola conexión a la vez").
+            android.util.Log.d("FarososDiag", "server onCharacteristicWriteRequest: uuid=${characteristic.uuid} device=${device.address} accepted=${device.address == connectedDevice?.address}")
             if (device.address != connectedDevice?.address) return
             when (characteristic.uuid) {
-                DirectChatGattService.EPHEMERAL_PUBLIC_KEY_CHARACTERISTIC_UUID -> handlePeerPublicKey(value)
-                DirectChatGattService.MESSAGE_WRITE_CHARACTERISTIC_UUID -> handleIncomingMessage(value)
+                DirectChatGattService.GUEST_PUBLIC_KEY_CHARACTERISTIC_UUID -> handlePeerPublicKey(value)
+                DirectChatGattService.MESSAGE_CHARACTERISTIC_UUID -> handleIncomingMessage(value)
             }
             if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, null)
@@ -197,12 +239,36 @@ class ChatGattServer(
 
         @SuppressLint("MissingPermission")
         override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
-            val value = if (characteristic.uuid == DirectChatGattService.EPHEMERAL_PUBLIC_KEY_CHARACTERISTIC_UUID) {
+            val value = if (characteristic.uuid == DirectChatGattService.HOST_PUBLIC_KEY_CHARACTERISTIC_UUID) {
                 ownEphemeralKeyPair?.publicKey
             } else {
                 null
             }
+            android.util.Log.d("FarososDiag", "server onCharacteristicReadRequest: uuid=${characteristic.uuid} device=${device.address} value=${value != null}")
             gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+        }
+
+        // Hallazgo de campo real (#64): sin este override, la escritura del
+        // descriptor CCCD (suscripción a notificaciones) que hace todo
+        // central al conectar nunca recibe respuesta ATT - el central espera
+        // el timeout de 30s de la transacción GATT y la conexión completa
+        // cae, aunque el resto del handshake (lectura/escritura de claves)
+        // ya haya terminado bien. La implementación por defecto de
+        // `BluetoothGattServerCallback` no manda ninguna respuesta.
+        @SuppressLint("MissingPermission")
+        override fun onDescriptorWriteRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            descriptor: BluetoothGattDescriptor,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray
+        ) {
+            android.util.Log.d("FarososDiag", "server onDescriptorWriteRequest: uuid=${descriptor.uuid} device=${device.address}")
+            if (responseNeeded) {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+            }
         }
     }
 
@@ -223,6 +289,7 @@ class ChatGattServer(
             return
         }
         sessionKey = key
+        android.util.Log.d("FarososDiag", "server: sessionKey derivado, notificando historial")
         sendEncrypted(key, session.historySnapshot())
     }
 
@@ -246,9 +313,38 @@ class ChatGattServer(
         val device = connectedDevice ?: return
         val server = gattServer ?: return
         val service = server.getService(DirectChatGattService.SERVICE_UUID) ?: return
-        val characteristic = service.getCharacteristic(DirectChatGattService.MESSAGE_NOTIFY_CHARACTERISTIC_UUID) ?: return
-        val payload = ChatCrypto.encrypt(key, ChatMessageWireFormat.encode(messages).toByteArray(Charsets.UTF_8))
+        val characteristic = service.getCharacteristic(DirectChatGattService.MESSAGE_CHARACTERISTIC_UUID) ?: return
+        val payload = sealFitting(key, messages) ?: return
         characteristic.value = payload
-        server.notifyCharacteristicChanged(device, characteristic, false)
+        val notified = server.notifyCharacteristicChanged(device, characteristic, false)
+        android.util.Log.d("FarososDiag", "server: notifyCharacteristicChanged=$notified bytes=${payload.size}")
+    }
+
+    /**
+     * Una notificación GATT nunca se fragmenta a nivel de protocolo - tiene
+     * que caber entera en un solo paquete ATT. Con el MTU de 517 bytes que
+     * este proyecto negocia, el máximo utilizable es 514; este valor se
+     * queda por debajo con margen de sobra (mismo criterio que el lado iOS,
+     * `ChatHostSession.maxSealedHistoryBytes`). Hallazgo de campo (#64): el
+     * historial acumulado de una conversación real supera esto fácilmente,
+     * y una notificación más grande que el paquete se trunca en silencio -
+     * el tag de AES-GCM nunca calza y el receptor descarta todo el
+     * historial, no solo lo que sobraba. Descarta los mensajes más viejos,
+     * uno por uno, hasta que el blob cifrado entre. `null` solo si ni el
+     * mensaje más reciente por sí solo entra (mensaje individual demasiado
+     * largo).
+     */
+    private fun sealFitting(key: ByteArray, messages: List<ChatMessage>): ByteArray? {
+        var candidate = messages
+        while (true) {
+            val sealed = ChatCrypto.encrypt(key, ChatMessageWireFormat.encode(candidate).toByteArray(Charsets.UTF_8))
+            if (sealed.size <= MAX_SEALED_HISTORY_BYTES) return sealed
+            if (candidate.isEmpty()) return null
+            candidate = candidate.drop(1)
+        }
+    }
+
+    private companion object {
+        const val MAX_SEALED_HISTORY_BYTES = 480
     }
 }

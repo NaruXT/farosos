@@ -3,8 +3,6 @@ import XCTest
 @testable import DirectChat
 
 final class ChatClientSessionTests: XCTestCase {
-    private let ownHash = Data([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])
-
     func testStartHandshakeReturnsA32ByteEd25519PublicKey() {
         let session = ChatClientSession()
         XCTAssertEqual(session.startHandshake().count, 32)
@@ -14,7 +12,7 @@ final class ChatClientSessionTests: XCTestCase {
         let session = ChatClientSession()
         _ = session.startHandshake()
 
-        XCTAssertNil(session.encryptOwnMessage("hola", ownDeviceIdHash: ownHash, sentAt: 1))
+        XCTAssertNil(session.encryptOwnMessage("hola", sentAt: 1))
     }
 
     func testAFullRoundTripBetweenAnIndependentEphemeralHostAndTheClientWorks() throws {
@@ -24,14 +22,14 @@ final class ChatClientSessionTests: XCTestCase {
         let clientPublicKeyData = session.startHandshake()
         session.receivedHostPublicKey(hostPublicKeyData)
 
-        guard let sealedMessage = session.encryptOwnMessage("necesito ayuda con la pierna", ownDeviceIdHash: ownHash, sentAt: 5) else {
+        guard let sealedMessage = session.encryptOwnMessage("necesito ayuda con la pierna", sentAt: 5) else {
             return XCTFail("se esperaba poder cifrar tras el handshake")
         }
 
         let hostKey = try EphemeralKeyAgreement.deriveSymmetricKey(ownPrivateKey: hostPrivateKey, peerPublicKeyData: clientPublicKeyData)
         let opened = ChatCipher.open(sealedMessage, using: hostKey)
         XCTAssertNotNil(opened)
-        let decoded = try JSONDecoder().decode([ChatMessage].self, from: opened!)
+        let decoded = ChatMessageWireFormat.decode(String(data: opened!, encoding: .utf8)!)
         XCTAssertEqual(decoded.first?.text, "necesito ayuda con la pierna")
     }
 
@@ -42,8 +40,8 @@ final class ChatClientSessionTests: XCTestCase {
         session.receivedHostPublicKey(hostPublicKeyData)
         let hostKey = try EphemeralKeyAgreement.deriveSymmetricKey(ownPrivateKey: hostPrivateKey, peerPublicKeyData: clientPublicKeyData)
 
-        let history = [ChatMessage(senderDeviceIdHash: ownHash, text: "hola, ya estoy cerca", sentAt: 1)]
-        let sealed = try ChatCipher.seal(JSONEncoder().encode(history), using: hostKey)
+        let history = [ChatMessage(fromVictim: true, text: "hola, ya estoy cerca", sentAtEpochSeconds: 1)]
+        let sealed = try ChatCipher.seal(Data(ChatMessageWireFormat.encode(history).utf8), using: hostKey)
 
         var received: [ChatMessage]?
         session.onMessagesReceived = { received = $0 }

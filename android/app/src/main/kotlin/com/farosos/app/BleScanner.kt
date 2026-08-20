@@ -168,6 +168,28 @@ class BleScanner(
         nextAllowedConnectAt.clear()
     }
 
+    /**
+     * Hallazgo de campo (#64): `stopScan()` no cierra la ventana de carrera
+     * a tiempo para el chat directo - un `onScanResult` que ya estaba en la
+     * cola del hilo principal justo antes de llamar a [stop] igual dispara
+     * [connectForGattRead] después, superponiendo una conexión extra del
+     * escáner con la que el chat recién abrió al mismo peer. Eso confundió
+     * el lado de la víctima lo suficiente como para que cortara la conexión
+     * real del chat a los ~33s (`status=19`, GATT_CONN_TERMINATE_PEER_USER).
+     * Este flag se chequea sincrónicamente al principio de
+     * [connectForGattRead], en el mismo hilo donde ya corre `onScanResult`
+     * - cierra la ventana de carrera que `stopScan()` deja abierta.
+     */
+    private var gattConnectsPaused = false
+
+    fun pauseGattConnects() {
+        gattConnectsPaused = true
+    }
+
+    fun resumeGattConnects() {
+        gattConnectsPaused = false
+    }
+
     // El overload de 4 parámetros está deprecado a favor de uno basado en
     // `BluetoothGattConnectionSettings` — pero esa API es nueva y no existe
     // en versiones de Android anteriores a la más reciente, mientras que
@@ -176,6 +198,8 @@ class BleScanner(
     @Suppress("DEPRECATION")
     @SuppressLint("MissingPermission") // el caller garantiza BLUETOOTH_CONNECT antes de llamar
     private fun connectForGattRead(device: BluetoothDevice) {
+        android.util.Log.d("FarososDiag", "scanner: connectForGattRead device=${device.address} paused=$gattConnectsPaused")
+        if (gattConnectsPaused) return
         val now = SystemClock.elapsedRealtime()
         val nextAllowed = nextAllowedConnectAt[device.address]
         if (nextAllowed != null && now < nextAllowed) return

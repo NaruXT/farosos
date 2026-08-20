@@ -21,6 +21,11 @@ struct KnownCasesView: View {
 
     var body: some View {
         NavigationStack {
+            // Diagnóstico temporal de campo (#64).
+            Text(viewModel.debugAllStates)
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .padding(.horizontal)
             List {
                 if viewModel.cases.isEmpty {
                     Text("No hay casos conocidos por este teléfono todavía.")

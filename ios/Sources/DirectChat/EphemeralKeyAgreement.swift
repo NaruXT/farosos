@@ -19,20 +19,22 @@ public enum EphemeralKeyAgreement {
     }
 
     /// Deriva la clave simétrica de la sesión a partir del secreto ECDH
-    /// crudo — HKDF-SHA256 sin sal ni info (ninguna hace falta: la clave ya
-    /// es única por conexión porque ambos pares de X25519 son efímeros).
+    /// crudo - SHA-256 directo sobre el secreto, sin HKDF. Reescrito
+    /// durante la verificación de campo real de #64: la primera versión
+    /// usaba HKDF-SHA256 (con `sharedInfo` propio), incompatible con
+    /// Android (`ChatCrypto.deriveSessionKey`, #63), que deriva con
+    /// SHA-256 plano - dos claves de sesión distintas a partir del mismo
+    /// secreto ECDH, ningún mensaje cifrado por un lado abría del otro. Se
+    /// adoptó el esquema de Android como canónico (mismo principio que la
+    /// reconciliación de características GATT): un solo paso de digest
+    /// alcanza porque el secreto ya tiene alta entropía y se usa una sola
+    /// vez por conexión, sin contexto adicional que mezclar.
     public static func deriveSymmetricKey(
         ownPrivateKey: Curve25519.KeyAgreement.PrivateKey,
         peerPublicKeyData: Data
     ) throws -> SymmetricKey {
-        let peerPublicKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: peerPublicKeyData)
-        let sharedSecret = try ownPrivateKey.sharedSecretFromKeyAgreement(with: peerPublicKey)
-        return sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: Data("farosos-direct-chat".utf8),
-            outputByteCount: 32
-        )
+        let rawSecret = try rawSharedSecret(ownPrivateKey: ownPrivateKey, peerPublicKeyData: peerPublicKeyData)
+        return SymmetricKey(data: SHA256.hash(data: rawSecret))
     }
 
     /// Expone el secreto ECDH crudo (antes de HKDF) — solo para verificar la
